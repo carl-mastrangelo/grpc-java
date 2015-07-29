@@ -137,8 +137,8 @@ class InProcessTransport implements ServerTransport, ClientTransport {
     if (shutdown) {
       return;
     }
-    shutdownStatus = Status.OK.withDescription("transport was requested to shut down");
-    notifyShutdown(shutdownStatus);
+    shutdownStatus = Status.UNAVAILABLE.withDescription("transport was requested to shut down");
+    notifyShutdown(Status.OK.withDescription(shutdownStatus.getDescription()));
     if (streams.isEmpty()) {
       notifyTerminated();
     }
