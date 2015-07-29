@@ -106,7 +106,7 @@ public interface ClientTransport {
      * The transport is shutting down. No new streams will be processed, but existing streams may
      * continue. Shutdown could have been caused by an error or normal operation.  It is possible
      * that this method is called without {@link #shutdown} being called.  If the argument to this
-     * function is {@link Status#OK}, it is safe to immediately reconnect.
+     * function is {@link Status#isOk}, it is safe to immediately reconnect.
      *
      * @param s the reason for the shutdown.
      */
