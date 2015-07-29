@@ -192,7 +192,7 @@ class NettyClientTransport implements ClientTransport {
   }
 
   private void notifyShutdown(Throwable t) {
-    Status s = Status.UNAVAILABLE.withDescription("Transport is shutting down");
+    Status s = Status.OK.withDescription("Transport is shutting down");
     if (t != null) {
       log.log(Level.SEVERE, "Transport failed", t);
       s = s.withCause(t).withDescription("Transport failed");
