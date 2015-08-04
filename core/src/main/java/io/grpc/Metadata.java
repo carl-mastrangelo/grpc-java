@@ -295,7 +295,6 @@ public abstract class Metadata {
    */
   public static class Headers extends Metadata {
     private String path;
-    private String authority;
 
     /**
      * Called by the transport layer to create headers from their binary serialized values.
@@ -324,50 +323,28 @@ public abstract class Metadata {
       this.path = path;
     }
 
-    /**
-     * The serving authority for the operation.
-     */
-    public String getAuthority() {
-      return authority;
-    }
-
-    /**
-     * Override the HTTP/2 authority the channel claims to be connecting to. <em>This is not
-     * generally safe.</em> Overriding allows advanced users to re-use a single Channel for multiple
-     * services, even if those services are hosted on different domain names. That assumes the
-     * server is virtually hosting multiple domains and is guaranteed to continue doing so. It is
-     * rare for a service provider to make such a guarantee. <em>At this time, there is no security
-     * verification of the overridden value, such as making sure the authority matches the server's
-     * TLS certificate.</em>
-     */
-    public void setAuthority(String authority) {
-      this.authority = authority;
-    }
-
     @Override
     public void merge(Metadata other) {
       super.merge(other);
-      mergePathAndAuthority(other);
+      mergePath(other);
     }
 
     @Override
     public void merge(Metadata other, Set<Key<?>> keys) {
       super.merge(other, keys);
-      mergePathAndAuthority(other);
+      mergePath(other);
     }
 
-    private void mergePathAndAuthority(Metadata other) {
+    private void mergePath(Metadata other) {
       if (other instanceof Headers) {
         Headers otherHeaders = (Headers) other;
         path = otherHeaders.path != null ? otherHeaders.path : path;
-        authority = otherHeaders.authority != null ? otherHeaders.authority : authority;
       }
     }
 
     @Override
     public String toString() {
       return "Headers(path=" + path
-          + ",authority=" + authority
           + ",metadata=" + super.toStringInternal() + ")";
     }
   }

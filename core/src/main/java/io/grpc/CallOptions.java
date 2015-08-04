@@ -53,6 +53,8 @@ public final class CallOptions {
   // unnamed arguments, which is undesirable.
   private Long deadlineNanoTime;
 
+  private String authority;
+
   /**
    * Returns a new {@code CallOptions} with the given absolute deadline in nanoseconds in the clock
    * as per {@link System#nanoTime()}.
@@ -77,6 +79,22 @@ public final class CallOptions {
     return withDeadlineNanoTime(System.nanoTime() + unit.toNanos(duration));
   }
 
+
+  /**
+   * Override the HTTP/2 authority the channel claims to be connecting to. <em>This is not
+   * generally safe.</em> Overriding allows advanced users to re-use a single Channel for multiple
+   * services, even if those services are hosted on different domain names. That assumes the
+   * server is virtually hosting multiple domains and is guaranteed to continue doing so. It is
+   * rare for a service provider to make such a guarantee. <em>At this time, there is no security
+   * verification of the overridden value, such as making sure the authority matches the server's
+   * TLS certificate.</em>
+   */
+  public CallOptions withAuthority(String authority) {
+    CallOptions newOptions = new CallOptions(this);
+    newOptions.authority = authority;
+    return newOptions;
+  }
+
   /**
    * Returns the deadline in nanoseconds in the clock as per {@link System#nanoTime()}. {@code null}
    * if the deadline is not set.
@@ -84,6 +102,13 @@ public final class CallOptions {
   @Nullable
   public Long getDeadlineNanoTime() {
     return deadlineNanoTime;
+  }
+
+  /**
+   * The serving authority for the call.
+   */
+  public String getAuthority() {
+    return authority;
   }
 
   private CallOptions() {
