@@ -119,6 +119,7 @@ public final class CallOptions {
    */
   private CallOptions(CallOptions other) {
     deadlineNanoTime = other.deadlineNanoTime;
+    authority = other.authority;
   }
 
   @Override
@@ -129,6 +130,7 @@ public final class CallOptions {
       buffer.append(" (").append(deadlineNanoTime - System.nanoTime()).append(" ns from now)");
     }
     buffer.append("]");
+    buffer.append("authority=").append(authority);
     return buffer.toString();
   }
 }
