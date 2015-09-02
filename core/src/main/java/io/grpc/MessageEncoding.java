@@ -21,7 +21,7 @@ import javax.annotation.Nullable;
 /**
  * Encloses classes related to the compression and decompression of messages.
  */
-@ExperimentalApi
+@ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
 public final class MessageEncoding {
   /**
    * Special sentinel codec indicating that no compression should be used.  Users should use
@@ -51,7 +51,7 @@ public final class MessageEncoding {
   /**
    * Represents a message compressor.
    */
-  @ExperimentalApi
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public interface Compressor {
     /**
      * Returns the message encoding that this compressor uses.
@@ -71,7 +71,7 @@ public final class MessageEncoding {
   /**
    * Represents a message decompressor.
    */
-  @ExperimentalApi
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public interface Decompressor {
     /**
      * Returns the message encoding that this compressor uses.
@@ -91,14 +91,14 @@ public final class MessageEncoding {
   /**
    * Represents an object that can both compress and decompress messages.
    */
-  @ExperimentalApi
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public interface Codec extends Compressor, Decompressor {}
 
   /**
    * A gzip compressor and decompressor.  In the future this will likely support other
    * compression methods, such as compression level.
    */
-  @ExperimentalApi
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static final class Gzip implements Codec {
     @Override
     public String getMessageEncoding() {
@@ -123,7 +123,7 @@ public final class MessageEncoding {
    * @param advertised If true, the message encoding will be listed in the Accept-Encoding header.
    * @throws IllegalArgumentException if another compressor by the same name is already registered.
    */
-  @ExperimentalApi
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static final void registerDecompressor(Decompressor d, boolean advertised) {
     DecompressorInfo previousInfo =
         decompressors.putIfAbsent(d.getMessageEncoding(), new DecompressorInfo(d, advertised));
@@ -145,7 +145,7 @@ public final class MessageEncoding {
    * Provides a list of all message encodings that have decompressors available and should be
    * advertised.
    */
-  @ExperimentalApi
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static Set<String> getAdvertisedMessageEncodings() {
     Set<String> advertisedDecompressors = new HashSet<String>();
     for (Entry<String, DecompressorInfo> entry : decompressors.entrySet()) {
@@ -165,7 +165,7 @@ public final class MessageEncoding {
    * encodings sent to the remote host.
    */
   @Nullable
-  @ExperimentalApi
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static Decompressor lookupDecompressor(String messageEncoding) {
     DecompressorInfo info = decompressors.get(messageEncoding);
     return info != null ? info.decompressor : null;
