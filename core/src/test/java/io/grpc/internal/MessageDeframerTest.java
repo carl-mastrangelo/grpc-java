@@ -68,7 +68,7 @@ import java.util.zip.GZIPOutputStream;
 @RunWith(JUnit4.class)
 public class MessageDeframerTest {
   private Listener listener = mock(Listener.class);
-  private MessageDeframer deframer = new MessageDeframer(listener, Codec.NONE,
+  private MessageDeframer deframer = new MessageDeframer(listener, Codec.Identity.NONE,
           DEFAULT_MAX_MESSAGE_SIZE);
   private ArgumentCaptor<InputStream> messages = ArgumentCaptor.forClass(InputStream.class);
 

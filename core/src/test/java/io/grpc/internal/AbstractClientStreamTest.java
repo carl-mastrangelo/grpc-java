@@ -218,7 +218,7 @@ public class AbstractClientStreamTest {
     AbstractClientStream<Integer> stream =
         new BaseAbstractClientStream<Integer>(allocator, mockListener);
     Metadata headers = new Metadata();
-    headers.put(GrpcUtil.MESSAGE_ENCODING_KEY, Codec.NONE.getMessageEncoding());
+    headers.put(GrpcUtil.MESSAGE_ENCODING_KEY, Codec.Identity.NONE.getMessageEncoding());
 
     stream.inboundHeadersReceived(headers);
     verify(mockListener).headersRead(headers);

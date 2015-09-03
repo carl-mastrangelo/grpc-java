@@ -139,7 +139,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
     headers.removeAll(MESSAGE_ENCODING_KEY);
     Compressor compressor = callOptions.getCompressor();
-    if (compressor != null && compressor != Codec.NONE) {
+    if (compressor != null && compressor != Codec.Identity.NONE) {
       headers.put(MESSAGE_ENCODING_KEY, compressor.getMessageEncoding());
     }
 

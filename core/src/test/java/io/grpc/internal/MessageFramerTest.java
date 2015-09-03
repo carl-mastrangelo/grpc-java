@@ -274,7 +274,7 @@ public class MessageFramerTest {
         }
       }
     };
-    framer = new MessageFramer(reentrant, allocator, Codec.NONE);
+    framer = new MessageFramer(reentrant, allocator, Codec.Identity.NONE);
     writeKnownLength(framer, new byte[]{3, 14});
     framer.close();
   }

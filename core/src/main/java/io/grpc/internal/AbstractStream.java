@@ -131,7 +131,7 @@ public abstract class AbstractStream<IdT> implements Stream {
     };
 
     framer = new MessageFramer(outboundFrameHandler, bufferAllocator);
-    deframer = new MessageDeframer(inboundMessageHandler, Codec.NONE, maxMessageSize);
+    deframer = new MessageDeframer(inboundMessageHandler, Codec.Identity.NONE, maxMessageSize);
   }
 
   @Override

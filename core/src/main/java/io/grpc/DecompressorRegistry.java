@@ -107,7 +107,7 @@ public final class DecompressorRegistry {
     // By default, Gzip
     decompressors.put(gzip.getMessageEncoding(), new DecompressorInfo(gzip, false));
     decompressors.put(
-        Codec.NONE.getMessageEncoding(), new DecompressorInfo(Codec.NONE, false));
+        Codec.Identity.NONE.getMessageEncoding(), new DecompressorInfo(Codec.Identity.NONE, false));
   }
 
   /**

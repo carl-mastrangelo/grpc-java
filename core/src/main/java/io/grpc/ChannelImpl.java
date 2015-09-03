@@ -154,12 +154,12 @@ public final class ChannelImpl extends Channel {
    * If the remote host does not support the message encoding, the call will likely break.  There
    * is currently no provided way to discover what message encodings the remote host supports.
    * @param c The compressor to use.  If {@code null} no compression will by performed.  This is
-   *          equivalent to using {@link Codec#NONE}.  If not null, the Compressor must be
+   *          equivalent to using {@code Codec.Identity.NONE}.  If not null, the Compressor must be
    *          threadsafe.
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public void setDefaultCompressor(@Nullable Compressor c) {
-    defaultCompressor = (c != null) ? c : Codec.NONE;
+    defaultCompressor = (c != null) ? c : Codec.Identity.NONE;
   }
 
   /**
@@ -276,7 +276,7 @@ public final class ChannelImpl extends Channel {
   public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,
       CallOptions callOptions) {
     boolean hasCodecOverride = callOptions.getCompressor() != null;
-    if (!hasCodecOverride && defaultCompressor != Codec.NONE) {
+    if (!hasCodecOverride && defaultCompressor != Codec.Identity.NONE) {
       callOptions = callOptions.withCompressor(defaultCompressor);
     }
     return interceptorChannel.newCall(method, callOptions);

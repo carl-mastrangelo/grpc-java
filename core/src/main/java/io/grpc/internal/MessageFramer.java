@@ -91,7 +91,7 @@ public class MessageFramer {
    * @param bufferAllocator allocates buffers that the transport can commit to the wire.
    */
   public MessageFramer(Sink sink, WritableBufferAllocator bufferAllocator) {
-    this(sink, bufferAllocator, Codec.NONE);
+    this(sink, bufferAllocator, Codec.Identity.NONE);
   }
 
   /**
@@ -119,7 +119,7 @@ public class MessageFramer {
   public void writePayload(InputStream message) {
     verifyNotClosed();
     try {
-      if (compressor != Codec.NONE) {
+      if (compressor != Codec.Identity.NONE) {
         writeCompressed(message);
       } else {
         writeUncompressed(message);

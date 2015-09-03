@@ -359,7 +359,7 @@ public class MessageDeframer implements Closeable {
   }
 
   private InputStream getCompressedBody() {
-    if (decompressor == Codec.NONE) {
+    if (decompressor == Codec.Identity.NONE) {
       throw Status.INTERNAL.withDescription(
           "Can't decode compressed frame as compression not configured.").asRuntimeException();
     }

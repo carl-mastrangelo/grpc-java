@@ -39,6 +39,7 @@ import java.util.zip.GZIPOutputStream;
 
 /**
  * Encloses classes related to the compression and decompression of messages.
+ *
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
 public interface Codec extends Compressor, Decompressor {
@@ -46,7 +47,8 @@ public interface Codec extends Compressor, Decompressor {
    * A gzip compressor and decompressor.  In the future this will likely support other
    * compression methods, such as compression level.
    */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492") class Gzip implements Codec {
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
+  public static final class Gzip implements Codec {
     @Override
     public String getMessageEncoding() {
       return "gzip";
@@ -63,13 +65,18 @@ public interface Codec extends Compressor, Decompressor {
     }
   }
 
-
   /**
-   * Special sentinel codec indicating that no compression should be used.  Users should use
-   * reference equality to see if compression is disabled.
+   * The "identity", or "none" codec.  This codec is special in that it can be used to explicitly
+   * disable Call compression on a Channel that by default compresses.
    */
   @ExperimentalApi
-  public static final Codec NONE = new Codec() {
+  public static final class Identity implements Codec {
+    /**
+     * Special sentinel codec indicating that no compression should be used.  Users should use
+     * reference equality to see if compression is disabled.
+     */
+    public static final Codec NONE = new Identity();
+
     @Override
     public InputStream decompress(InputStream is) throws IOException {
       return is;
@@ -84,5 +91,7 @@ public interface Codec extends Compressor, Decompressor {
     public OutputStream compress(OutputStream os) throws IOException {
       return os;
     }
-  };
+
+    private Identity() {}
+  }
 }
