@@ -30,7 +30,7 @@ public final class DecompressorRegistry {
    * @throws IllegalArgumentException if another compressor by the same name is already registered.
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
-  public static final void registerDecompressor(Decompressor d, boolean advertised) {
+  public static final void register(Decompressor d, boolean advertised) {
     DecompressorInfo previousInfo =
         decompressors.putIfAbsent(d.getMessageEncoding(), new DecompressorInfo(d, advertised));
     if (previousInfo != null) {

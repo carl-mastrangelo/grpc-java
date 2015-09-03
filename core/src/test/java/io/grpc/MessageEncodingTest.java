@@ -57,14 +57,14 @@ public class MessageEncodingTest {
 
   @Test
   public void registerDecompressor_advertisedDecompressor() {
-    DecompressorRegistry.registerDecompressor(dummyDecompressor, true);
+    DecompressorRegistry.register(dummyDecompressor, true);
 
     assertTrue(getAdvertisedMessageEncodings().contains(dummyDecompressor.getMessageEncoding()));
   }
 
   @Test
   public void registerDecompressor_nonadvertisedDecompressor() {
-    DecompressorRegistry.registerDecompressor(dummyDecompressor, false);
+    DecompressorRegistry.register(dummyDecompressor, false);
 
     assertFalse(getAdvertisedMessageEncodings().contains(dummyDecompressor.getMessageEncoding()));
   }
