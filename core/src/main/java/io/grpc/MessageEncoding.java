@@ -4,17 +4,12 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 import javax.annotation.Nullable;
 
@@ -26,28 +21,6 @@ public final class MessageEncoding {
 
   private static final ConcurrentMap<String, DecompressorInfo> decompressors =
       initializeDefaultDecompressors();
-
-  /**
-   * A gzip compressor and decompressor.  In the future this will likely support other
-   * compression methods, such as compression level.
-   */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
-  public static final class Gzip implements Codec {
-    @Override
-    public String getMessageEncoding() {
-      return "gzip";
-    }
-
-    @Override
-    public OutputStream compress(OutputStream os) throws IOException {
-      return new GZIPOutputStream(os);
-    }
-
-    @Override
-    public InputStream decompress(InputStream is) throws IOException {
-      return new GZIPInputStream(is);
-    }
-  }
 
   /**
    * Registers a decompressor for both decompression and message encoding negotiation.
@@ -111,7 +84,7 @@ public final class MessageEncoding {
   private static ConcurrentMap<String, DecompressorInfo> initializeDefaultDecompressors() {
     ConcurrentMap<String, DecompressorInfo> defaultDecompressors =
         new ConcurrentHashMap<String, DecompressorInfo>();
-    Decompressor gzip = new Gzip();
+    Decompressor gzip = new Codec.Gzip();
     // By default, Gzip
     defaultDecompressors.put(gzip.getMessageEncoding(), new DecompressorInfo(gzip, false));
     defaultDecompressors.put(

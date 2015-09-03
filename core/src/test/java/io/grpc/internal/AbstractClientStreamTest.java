@@ -38,7 +38,6 @@ import static org.mockito.Matchers.isA;
 import static org.mockito.Mockito.verify;
 
 import io.grpc.Codec;
-import io.grpc.MessageEncoding;
 import io.grpc.Metadata;
 import io.grpc.Status;
 import io.grpc.Status.Code;
@@ -208,7 +207,7 @@ public class AbstractClientStreamTest {
     AbstractClientStream<Integer> stream =
         new BaseAbstractClientStream<Integer>(allocator, mockListener);
     Metadata headers = new Metadata();
-    headers.put(GrpcUtil.MESSAGE_ENCODING_KEY, new MessageEncoding.Gzip().getMessageEncoding());
+    headers.put(GrpcUtil.MESSAGE_ENCODING_KEY, new Codec.Gzip().getMessageEncoding());
 
     stream.inboundHeadersReceived(headers);
     verify(mockListener).headersRead(headers);

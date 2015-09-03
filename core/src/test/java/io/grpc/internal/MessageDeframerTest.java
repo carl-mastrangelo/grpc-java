@@ -46,7 +46,6 @@ import com.google.common.io.ByteStreams;
 import com.google.common.primitives.Bytes;
 
 import io.grpc.Codec;
-import io.grpc.MessageEncoding;
 import io.grpc.internal.MessageDeframer.Listener;
 
 import org.junit.Test;
@@ -179,7 +178,7 @@ public class MessageDeframerTest {
 
   @Test
   public void compressed() {
-    deframer = new MessageDeframer(listener, new MessageEncoding.Gzip(), DEFAULT_MAX_MESSAGE_SIZE);
+    deframer = new MessageDeframer(listener, new Codec.Gzip(), DEFAULT_MAX_MESSAGE_SIZE);
     deframer.request(1);
 
     byte[] payload = compress(new byte[1000]);
