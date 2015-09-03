@@ -19,8 +19,9 @@ import javax.annotation.Nullable;
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
 public final class DecompressorRegistry {
 
-  private static final ConcurrentMap<String, DecompressorInfo> decompressors =
-      initializeDefaultDecompressors();
+  private static final DecompressorRegistry INSTANCE = new DecompressorRegistry();
+
+  private final ConcurrentMap<String, DecompressorInfo> decompressors;
 
   /**
    * Registers a decompressor for both decompression and message encoding negotiation.
@@ -30,9 +31,14 @@ public final class DecompressorRegistry {
    * @throws IllegalArgumentException if another compressor by the same name is already registered.
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
-  public static final void register(Decompressor d, boolean advertised) {
-    DecompressorInfo previousInfo =
-        decompressors.putIfAbsent(d.getMessageEncoding(), new DecompressorInfo(d, advertised));
+  public static void register(Decompressor d, boolean advertised) {
+    INSTANCE.internalRegister(d, advertised);
+  }
+
+  @VisibleForTesting
+  void internalRegister(Decompressor d, boolean advertised) {
+    DecompressorInfo previousInfo = decompressors.putIfAbsent(
+        d.getMessageEncoding(), new DecompressorInfo(d, advertised));
     if (previousInfo != null) {
       throw new IllegalArgumentException(
           "A decompressor was already registered: " + previousInfo.decompressor);
@@ -44,6 +50,11 @@ public final class DecompressorRegistry {
    */
   @ExperimentalApi
   public static Set<String> getKnownMessageEncodings() {
+    return INSTANCE.internalGetKnownMessageEncodings();
+  }
+
+  @VisibleForTesting
+  Set<String> internalGetKnownMessageEncodings() {
     return Collections.unmodifiableSet(decompressors.keySet());
   }
 
@@ -53,6 +64,11 @@ public final class DecompressorRegistry {
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static Set<String> getAdvertisedMessageEncodings() {
+    return INSTANCE.internalGetAdvertisedMessageEncodings();
+  }
+
+  @VisibleForTesting
+  Set<String> internalGetAdvertisedMessageEncodings() {
     Set<String> advertisedDecompressors = new HashSet<String>();
     for (Entry<String, DecompressorInfo> entry : decompressors.entrySet()) {
       if (entry.getValue().advertised) {
@@ -73,33 +89,25 @@ public final class DecompressorRegistry {
   @Nullable
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static Decompressor lookupDecompressor(String messageEncoding) {
+    return INSTANCE.internalLookupDecompressor(messageEncoding);
+  }
+
+  @Nullable
+  @VisibleForTesting
+  Decompressor internalLookupDecompressor(String messageEncoding) {
     DecompressorInfo info = decompressors.get(messageEncoding);
     return info != null ? info.decompressor : null;
   }
 
-  private DecompressorRegistry() {
-    // construct me not
-  }
 
-  private static ConcurrentMap<String, DecompressorInfo> initializeDefaultDecompressors() {
-    ConcurrentMap<String, DecompressorInfo> defaultDecompressors =
-        new ConcurrentHashMap<String, DecompressorInfo>();
+  @VisibleForTesting
+  DecompressorRegistry() {
+    decompressors = new ConcurrentHashMap<String, DecompressorInfo>();
     Decompressor gzip = new Codec.Gzip();
     // By default, Gzip
-    defaultDecompressors.put(gzip.getMessageEncoding(), new DecompressorInfo(gzip, false));
-    defaultDecompressors.put(
+    decompressors.put(gzip.getMessageEncoding(), new DecompressorInfo(gzip, false));
+    decompressors.put(
         Codec.NONE.getMessageEncoding(), new DecompressorInfo(Codec.NONE, false));
-    return defaultDecompressors;
-  }
-
-  /**
-   * Clears all registered decompressors and resets the registry to the default.  This should only
-   * be called from tests.
-   */
-  @VisibleForTesting
-  public static void resetDecompressors() {
-    decompressors.clear();
-    decompressors.putAll(initializeDefaultDecompressors());
   }
 
   /**
