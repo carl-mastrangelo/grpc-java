@@ -41,7 +41,7 @@ import com.google.common.base.Objects;
 import io.grpc.Codec;
 import io.grpc.Compressor;
 import io.grpc.Decompressor;
-import io.grpc.MessageEncoding;
+import io.grpc.DecompressorRegistry;
 
 import java.io.InputStream;
 
@@ -304,13 +304,13 @@ public abstract class AbstractStream<IdT> implements Stream {
 
   /**
    * Looks up the decompressor by its message encoding name, and sets it for this stream.
-   * Decompressors are registered with {@link MessageEncoding#registerDecompressor}.
+   * Decompressors are registered with {@link DecompressorRegistry#registerDecompressor}.
    *
    * @param messageEncoding the name of the encoding provided by the remote host
    * @throws IllegalArgumentException if the provided message encoding cannot be found.
    */
   protected final void setDecompressor(String messageEncoding) {
-    Decompressor d = MessageEncoding.lookupDecompressor(messageEncoding);
+    Decompressor d = DecompressorRegistry.lookupDecompressor(messageEncoding);
     checkArgument(d != null,
         "Unable to find decompressor for message encoding %s", messageEncoding);
     setDecompressor(d);

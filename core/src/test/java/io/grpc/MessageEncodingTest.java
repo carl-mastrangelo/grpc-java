@@ -1,8 +1,8 @@
 package io.grpc;
 
-import static io.grpc.MessageEncoding.getAdvertisedMessageEncodings;
-import static io.grpc.MessageEncoding.getKnownMessageEncodings;
-import static io.grpc.MessageEncoding.lookupDecompressor;
+import static io.grpc.DecompressorRegistry.getAdvertisedMessageEncodings;
+import static io.grpc.DecompressorRegistry.getKnownMessageEncodings;
+import static io.grpc.DecompressorRegistry.lookupDecompressor;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -19,7 +19,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Tests for {@link MessageEncoding}.
+ * Tests for {@link DecompressorRegistry}.
  */
 @RunWith(JUnit4.class)
 public class MessageEncodingTest {
@@ -28,7 +28,7 @@ public class MessageEncodingTest {
 
   @Before
   public void setUp() {
-    MessageEncoding.resetDecompressors();
+    DecompressorRegistry.resetDecompressors();
   }
 
   @Test
@@ -57,14 +57,14 @@ public class MessageEncodingTest {
 
   @Test
   public void registerDecompressor_advertisedDecompressor() {
-    MessageEncoding.registerDecompressor(dummyDecompressor, true);
+    DecompressorRegistry.registerDecompressor(dummyDecompressor, true);
 
     assertTrue(getAdvertisedMessageEncodings().contains(dummyDecompressor.getMessageEncoding()));
   }
 
   @Test
   public void registerDecompressor_nonadvertisedDecompressor() {
-    MessageEncoding.registerDecompressor(dummyDecompressor, false);
+    DecompressorRegistry.registerDecompressor(dummyDecompressor, false);
 
     assertFalse(getAdvertisedMessageEncodings().contains(dummyDecompressor.getMessageEncoding()));
   }

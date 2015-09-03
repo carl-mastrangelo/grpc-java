@@ -17,7 +17,7 @@ import javax.annotation.Nullable;
  * Encloses classes related to the compression and decompression of messages.
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
-public final class MessageEncoding {
+public final class DecompressorRegistry {
 
   private static final ConcurrentMap<String, DecompressorInfo> decompressors =
       initializeDefaultDecompressors();
@@ -77,7 +77,7 @@ public final class MessageEncoding {
     return info != null ? info.decompressor : null;
   }
 
-  private MessageEncoding() {
+  private DecompressorRegistry() {
     // construct me not
   }
 
