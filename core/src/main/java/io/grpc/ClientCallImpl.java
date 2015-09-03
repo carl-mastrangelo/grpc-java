@@ -39,7 +39,6 @@ import static io.grpc.internal.GrpcUtil.USER_AGENT_KEY;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 
-import io.grpc.MessageEncoding.Compressor;
 import io.grpc.MethodDescriptor.MethodType;
 import io.grpc.internal.ClientStream;
 import io.grpc.internal.ClientStreamListener;
@@ -140,7 +139,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
     headers.removeAll(MESSAGE_ENCODING_KEY);
     Compressor compressor = callOptions.getCompressor();
-    if (compressor != null && compressor != MessageEncoding.NONE) {
+    if (compressor != null && compressor != Codec.NONE) {
       headers.put(MESSAGE_ENCODING_KEY, compressor.getMessageEncoding());
     }
 

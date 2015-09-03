@@ -23,76 +23,9 @@ import javax.annotation.Nullable;
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
 public final class MessageEncoding {
-  /**
-   * Special sentinel codec indicating that no compression should be used.  Users should use
-   * reference equality to see if compression is disabled.
-   */
-  @ExperimentalApi
-  public static final Codec NONE = new Codec() {
-    @Override
-    public InputStream decompress(InputStream is) throws IOException {
-      return is;
-    }
-
-    @Override
-    public String getMessageEncoding() {
-      return "identity";
-    }
-
-    @Override
-    public OutputStream compress(OutputStream os) throws IOException {
-      return os;
-    }
-  };
 
   private static final ConcurrentMap<String, DecompressorInfo> decompressors =
       initializeDefaultDecompressors();
-
-  /**
-   * Represents a message compressor.
-   */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
-  public interface Compressor {
-    /**
-     * Returns the message encoding that this compressor uses.
-     *
-     * <p>This can be values such as "gzip", "deflate", "snappy", etc.
-     */
-    String getMessageEncoding();
-
-    /**
-     * Wraps an existing output stream with a compressing output stream.
-     * @param os The output stream of uncompressed data
-     * @return An output stream that compresses
-     */
-    OutputStream compress(OutputStream os) throws IOException;
-  }
-
-  /**
-   * Represents a message decompressor.
-   */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
-  public interface Decompressor {
-    /**
-     * Returns the message encoding that this compressor uses.
-     *
-     * <p>This can be values such as "gzip", "deflate", "snappy", etc.
-     */
-    String getMessageEncoding();
-
-    /**
-     * Wraps an existing input stream with a decompressing input stream.
-     * @param is The input stream of uncompressed data
-     * @return An input stream that decompresses
-     */
-    InputStream decompress(InputStream is) throws IOException;
-  }
-
-  /**
-   * Represents an object that can both compress and decompress messages.
-   */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
-  public interface Codec extends Compressor, Decompressor {}
 
   /**
    * A gzip compressor and decompressor.  In the future this will likely support other
@@ -181,7 +114,8 @@ public final class MessageEncoding {
     Decompressor gzip = new Gzip();
     // By default, Gzip
     defaultDecompressors.put(gzip.getMessageEncoding(), new DecompressorInfo(gzip, false));
-    defaultDecompressors.put(NONE.getMessageEncoding(), new DecompressorInfo(NONE, false));
+    defaultDecompressors.put(
+        Codec.NONE.getMessageEncoding(), new DecompressorInfo(Codec.NONE, false));
     return defaultDecompressors;
   }
 

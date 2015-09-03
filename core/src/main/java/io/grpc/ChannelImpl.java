@@ -36,7 +36,6 @@ import static io.grpc.internal.GrpcUtil.TIMER_SERVICE;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import io.grpc.ClientCallImpl.ClientTransportProvider;
-import io.grpc.MessageEncoding.Compressor;
 import io.grpc.internal.ClientStream;
 import io.grpc.internal.ClientStreamListener;
 import io.grpc.internal.ClientTransport;
@@ -155,12 +154,12 @@ public final class ChannelImpl extends Channel {
    * If the remote host does not support the message encoding, the call will likely break.  There
    * is currently no provided way to discover what message encodings the remote host supports.
    * @param c The compressor to use.  If {@code null} no compression will by performed.  This is
-   *          equivalent to using {@link MessageEncoding#NONE}.  If not null, the Comressor must be
+   *          equivalent to using {@link Codec#NONE}.  If not null, the Compressor must be
    *          threadsafe.
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public void setDefaultCompressor(@Nullable Compressor c) {
-    defaultCompressor = (c != null) ? c : MessageEncoding.NONE;
+    defaultCompressor = (c != null) ? c : Codec.NONE;
   }
 
   /**
@@ -277,7 +276,7 @@ public final class ChannelImpl extends Channel {
   public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,
       CallOptions callOptions) {
     boolean hasCodecOverride = callOptions.getCompressor() != null;
-    if (!hasCodecOverride && defaultCompressor != MessageEncoding.NONE) {
+    if (!hasCodecOverride && defaultCompressor != Codec.NONE) {
       callOptions = callOptions.withCompressor(defaultCompressor);
     }
     return interceptorChannel.newCall(method, callOptions);

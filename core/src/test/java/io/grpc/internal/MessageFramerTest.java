@@ -40,6 +40,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verifyZeroInteractions;
 
+import io.grpc.Codec;
 import io.grpc.MessageEncoding;
 
 import org.junit.Before;
@@ -274,7 +275,7 @@ public class MessageFramerTest {
         }
       }
     };
-    framer = new MessageFramer(reentrant, allocator, MessageEncoding.NONE);
+    framer = new MessageFramer(reentrant, allocator, Codec.NONE);
     writeKnownLength(framer, new byte[]{3, 14});
     framer.close();
   }

@@ -38,9 +38,10 @@ import static com.google.common.base.Preconditions.checkState;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 
+import io.grpc.Codec;
+import io.grpc.Compressor;
+import io.grpc.Decompressor;
 import io.grpc.MessageEncoding;
-import io.grpc.MessageEncoding.Compressor;
-import io.grpc.MessageEncoding.Decompressor;
 
 import java.io.InputStream;
 
@@ -130,7 +131,7 @@ public abstract class AbstractStream<IdT> implements Stream {
     };
 
     framer = new MessageFramer(outboundFrameHandler, bufferAllocator);
-    deframer = new MessageDeframer(inboundMessageHandler, MessageEncoding.NONE, maxMessageSize);
+    deframer = new MessageDeframer(inboundMessageHandler, Codec.NONE, maxMessageSize);
   }
 
   @Override
