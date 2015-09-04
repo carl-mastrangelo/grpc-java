@@ -47,7 +47,6 @@ public interface Codec extends Compressor, Decompressor {
    * A gzip compressor and decompressor.  In the future this will likely support other
    * compression methods, such as compression level.
    */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static final class Gzip implements Codec {
     @Override
     public String getMessageEncoding() {

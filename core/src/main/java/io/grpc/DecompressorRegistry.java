@@ -30,7 +30,6 @@ public final class DecompressorRegistry {
    * @param advertised If true, the message encoding will be listed in the Accept-Encoding header.
    * @throws IllegalArgumentException if another compressor by the same name is already registered.
    */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static void register(Decompressor d, boolean advertised) {
     INSTANCE.internalRegister(d, advertised);
   }
@@ -48,7 +47,6 @@ public final class DecompressorRegistry {
   /**
    * Provides a list of all message encodings that have decompressors available.
    */
-  @ExperimentalApi
   public static Set<String> getKnownMessageEncodings() {
     return INSTANCE.internalGetKnownMessageEncodings();
   }
@@ -62,7 +60,6 @@ public final class DecompressorRegistry {
    * Provides a list of all message encodings that have decompressors available and should be
    * advertised.
    */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static Set<String> getAdvertisedMessageEncodings() {
     return INSTANCE.internalGetAdvertisedMessageEncodings();
   }
@@ -87,7 +84,6 @@ public final class DecompressorRegistry {
    * encodings sent to the remote host.
    */
   @Nullable
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/492")
   public static Decompressor lookupDecompressor(String messageEncoding) {
     return INSTANCE.internalLookupDecompressor(messageEncoding);
   }
