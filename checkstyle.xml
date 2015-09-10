@@ -24,6 +24,7 @@
 <module name = "Checker">
     <property name="charset" value="UTF-8"/>
     
+    
     <property name="severity" value="error"/>
     
     <!-- Checks for whitespace                               -->
@@ -31,7 +32,13 @@
         <module name="FileTabCharacter">
             <property name="eachLine" value="true"/>
         </module>
-    
+        
+   <module name="RegexpHeader">
+        <property name="header"
+          value="Copyright 20\d\d, Google Inc\. All rights reserved\."/>
+        <property name="fileExtensions" value="java"/>
+        <property name="multiLines" value="1, 2" />
+    </module>
     <module name="TreeWalker">
         <module name="OuterTypeFilename"/>
         <module name="IllegalTokenText">
