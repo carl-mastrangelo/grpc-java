@@ -35,6 +35,7 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.stub.StreamObserver;
 
+import java.io.File;
 import java.util.logging.Logger;
 
 /**
@@ -50,6 +51,7 @@ public class HelloWorldServer {
   private void start() throws Exception {
     server = ServerBuilder.forPort(port)
         .addService(GreeterGrpc.bindService(new GreeterImpl()))
+        .useTransportSecurity(new File("/tmp/server.crt"), new File("/tmp/server8.key"))
         .build()
         .start();
     logger.info("Server started, listening on " + port);
