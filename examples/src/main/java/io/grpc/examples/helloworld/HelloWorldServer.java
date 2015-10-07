@@ -51,7 +51,7 @@ public class HelloWorldServer {
   private void start() throws Exception {
     server = ServerBuilder.forPort(port)
         .addService(GreeterGrpc.bindService(new GreeterImpl()))
-        .useTransportSecurity(new File("/tmp/server.crt"), new File("/tmp/server8.key"))
+        .useTransportSecurity(new File("/tmp/public.pem"), new File("/tmp/private8.pem"))
         .build()
         .start();
     logger.info("Server started, listening on " + port);
