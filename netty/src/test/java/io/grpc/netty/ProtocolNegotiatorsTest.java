@@ -194,20 +194,25 @@ public class ProtocolNegotiatorsTest {
   @Test
   public void engineLog() {
     Logger logger = Logger.getLogger(ProtocolNegotiators.class.getName());
-    logger.setFilter(new Filter() {
-      @Override
-      public boolean isLoggable(LogRecord record) {
-        // We still want to the log method to be exercised, just not printed to stderr.
-        return false;
-      }
-    });
+    Filter oldFilter = logger.getFilter();
+    try {
+      logger.setFilter(new Filter() {
+        @Override
+        public boolean isLoggable(LogRecord record) {
+          // We still want to the log method to be exercised, just not printed to stderr.
+          return false;
+        }
+      });
 
-    SslHandler sslHandler = new SslHandler(engine, false);
+      SslHandler sslHandler = new SslHandler(engine, false);
 
-    when(channelHandlerCtx.pipeline()).thenReturn(pipeline);
-    when(pipeline.get(Matchers.<Class<ChannelHandler>>any())).thenReturn(sslHandler);
+      when(channelHandlerCtx.pipeline()).thenReturn(pipeline);
+      when(pipeline.get(Matchers.<Class<ChannelHandler>>any())).thenReturn(sslHandler);
 
-    ProtocolNegotiators.logSslEngineDetails(
-        Level.INFO, channelHandlerCtx, "message", new Exception("bad"));
+      ProtocolNegotiators.logSslEngineDetails(
+          Level.INFO, channelHandlerCtx, "message", new Exception("bad"));
+    } finally {
+      logger.setFilter(oldFilter);
+    }
   }
 }
