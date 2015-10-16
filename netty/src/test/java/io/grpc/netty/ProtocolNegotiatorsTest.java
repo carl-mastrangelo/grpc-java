@@ -32,6 +32,7 @@
 package io.grpc.netty;
 
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,6 +43,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelPipeline;
+import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 
@@ -67,11 +69,13 @@ import javax.net.ssl.SSLEngine;
 @RunWith(JUnit4.class)
 public class ProtocolNegotiatorsTest {
   @Rule public final ExpectedException thrown = ExpectedException.none();
-  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
+  //@Rule public final MockitoRule mocks = MockitoJUnit.rule();
 
-  @Mock private ChannelHandlerContext channelHandlerCtx;
-  @Mock private ChannelPipeline pipeline;
-  @Mock private ChannelHandler channelHandler;
+  private EmbeddedChannel channel = new EmbeddedChannel();
+
+  private ChannelHandlerContext channelHandlerCtx;
+  private ChannelPipeline pipeline;
+  private SslHandler sslHandler;
 
   private SSLEngine engine;
 
@@ -79,11 +83,16 @@ public class ProtocolNegotiatorsTest {
   public void setUp() throws Exception {
     engine = SSLContext.getDefault().createSSLEngine();
     engine.getSession();
+
+    pipeline = channel.pipeline();
+    sslHandler = new SslHandler(engine, false);
+    channelHandlerCtx = pipeline.context(sslHandler);
+
   }
 
   @Test
   public void tlsHandler() throws Exception {
-    ChannelHandler handler = ProtocolNegotiators.serverTls(engine, channelHandler);
+    ChannelHandler handler = ProtocolNegotiators.serverTls(engine, mock(ChannelHandler.class));
 
     assertNotNull(handler);
   }
@@ -120,7 +129,7 @@ public class ProtocolNegotiatorsTest {
 
   @Test
   public void tlsHandler_userEventTriggeredNonSslEvent() throws Exception {
-    SslHandler sslHandler = new SslHandler(engine, false);
+
     ChannelInboundHandlerAdapter handler =
         new TlsChannelInboundHandlerAdapter(sslHandler, channelHandler);
     Object nonSslEvent = new Object();
