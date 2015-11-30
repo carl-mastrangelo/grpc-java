@@ -31,6 +31,7 @@
 
 package io.grpc.internal;
 
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.grpc.internal.GrpcUtil.AUTHORITY_KEY;
 import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
 import static io.grpc.internal.GrpcUtil.TIMEOUT_KEY;
@@ -40,6 +41,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 
@@ -154,6 +157,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
     ClientStreamListener listener = new ClientStreamListenerImpl(observer);
     ListenableFuture<ClientTransport> transportFuture = clientTransportProvider.get(callOptions);
+
+
     if (transportFuture.isDone()) {
       // Try to skip DelayedStream when possible to avoid the overhead of a volatile read in the
       // fast path. If that fails, stream will stay null and DelayedStream will be created.
@@ -169,10 +174,10 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
         // Fall through to DelayedStream
       }
     }
-
     if (stream == null) {
-      stream =
-          new DelayedStream(callOptions, transportFuture, headers, listener, callExecutor, method);
+      DelayedStream delayed;
+      stream = delayed = new DelayedStream(callOptions, headers, listener, callExecutor, method);
+      addListener(transportFuture, new StreamCreationTask(delayed));
     }
 
     stream.setDecompressionRegistry(decompressorRegistry);
@@ -382,5 +387,38 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       });
     }
   }
-}
 
+
+  private <T> void addListener(ListenableFuture<T> future, FutureCallback<T> callback) {
+    Executor executor = future.isDone() ? directExecutor() : callExecutor;
+    Futures.addCallback(future, callback, executor);
+  }
+
+  /**
+   * Wakes up delayed stream when the transport is ready or failed.
+   */
+  private static final class StreamCreationTask implements FutureCallback<ClientTransport> {
+    private final DelayedStream stream;
+
+    StreamCreationTask(DelayedStream stream) {
+      this.stream = stream;
+    }
+
+    @Override
+    public void onSuccess(ClientTransport transport) {
+      if (transport == null) {
+        stream.maybeClosePrematurely(Status.UNAVAILABLE.withDescription("Channel is shutdown"));
+        return;
+      }
+      stream.createStream(transport);
+    }
+
+    @Override
+    public void onFailure(Throwable t) {
+      stream.maybeClosePrematurely(Status.fromThrowable(t));
+      if (t instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+}

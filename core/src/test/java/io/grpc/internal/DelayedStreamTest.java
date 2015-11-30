@@ -31,17 +31,13 @@
 
 package io.grpc.internal;
 
-import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isA;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.SettableFuture;
 
 import io.grpc.CallOptions;
 import io.grpc.Codec;
@@ -51,7 +47,6 @@ import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.MethodDescriptor.MethodType;
 import io.grpc.Status;
-import io.grpc.StatusRuntimeException;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -82,7 +77,6 @@ public class DelayedStreamTest {
   @Mock private ClientTransport transport;
   @Mock private ClientStream realStream;
   @Captor private ArgumentCaptor<Status> statusCaptor = ArgumentCaptor.forClass(Status.class);
-  private SettableFuture<ClientTransport> transportFuture = SettableFuture.create();
   private DelayedStream stream;
   private Metadata headers = new Metadata();
 
@@ -93,22 +87,7 @@ public class DelayedStreamTest {
   public void setUp() {
     MockitoAnnotations.initMocks(this);
 
-    stream = new DelayedStream(CallOptions.DEFAULT, transportFuture, headers, listener, executor,
-        method);
-  }
-
-  @Test
-  public void realStreamCreatedImmediately() {
-    when(transport.newStream(
-        isA(MethodDescriptor.class),
-        isA(Metadata.class),
-        isA(ClientStreamListener.class)))
-        .thenReturn(realStream);
-    ListenableFuture<ClientTransport> future = Futures.immediateFuture(transport);
-
-    stream = new DelayedStream(CallOptions.DEFAULT, future, headers, listener, executor, method);
-
-    verify(transport).newStream(method, headers, listener);
+    stream = new DelayedStream(CallOptions.DEFAULT, headers, listener, executor, method);
   }
 
   @Test
@@ -119,27 +98,9 @@ public class DelayedStreamTest {
         isA(ClientStreamListener.class)))
         .thenReturn(realStream);
 
-    // triggers createStream
-    transportFuture.set(transport);
+    stream.createStream(transport);
 
     verify(transport).newStream(method, headers, listener);
-  }
-
-  @Test
-  public void streamClosedOnTransportFailure() {
-    transportFuture.setException(new StatusRuntimeException(Status.INTERNAL));
-
-    verify(listener).closed(statusCaptor.capture(), isA(Metadata.class));
-    assertEquals(Status.Code.INTERNAL, statusCaptor.getValue().getCode());
-  }
-
-  @Test
-  public void streamClosedOnNullShutdownTransport() {
-    transportFuture.set(null);
-
-    verify(listener).closed(statusCaptor.capture(), isA(Metadata.class));
-    assertEquals(Status.Code.UNAVAILABLE, statusCaptor.getValue().getCode());
-    assertEquals("Channel is shutdown", statusCaptor.getValue().getDescription());
   }
 
   @Test
@@ -246,9 +207,9 @@ public class DelayedStreamTest {
   public void createStream_deadlineExceeded() {
     CallOptions callOptions = CallOptions.DEFAULT.withDeadlineNanoTime(System.nanoTime() - 1);
     headers.put(GrpcUtil.TIMEOUT_KEY, 1L);
-    ListenableFuture<ClientTransport> future = Futures.immediateFuture(transport);
 
-    stream = new DelayedStream(callOptions, future, headers, listener, executor, method);
+    stream = new DelayedStream(callOptions, headers, listener, executor, method);
+    stream.createStream(transport);
 
     verify(listener).closed(eq(Status.DEADLINE_EXCEEDED), isA(Metadata.class));
   }

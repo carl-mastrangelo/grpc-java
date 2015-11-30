@@ -34,9 +34,6 @@ package io.grpc.internal;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.util.concurrent.ListenableFuture;
-
 import io.grpc.CallOptions;
 import io.grpc.ClientCall;
 import io.grpc.Compressor;
@@ -91,40 +88,6 @@ final class DelayedStream implements ClientStream {
   @GuardedBy("lock")
   private boolean pendingFlush;
 
-  /**
-   * Get a transport and try to create a stream on it.
-   */
-  private class StreamCreationTask implements Runnable {
-    final ListenableFuture<ClientTransport> transportFuture;
-
-    StreamCreationTask(ListenableFuture<ClientTransport> transportFuture) {
-      this.transportFuture = checkNotNull(transportFuture);
-    }
-
-    @Override
-    public void run() {
-      if (transportFuture.isDone()) {
-        ClientTransport transport;
-        try {
-          transport = transportFuture.get();
-        } catch (Exception e) {
-          maybeClosePrematurely(Status.fromThrowable(e));
-          if (e instanceof InterruptedException) {
-            Thread.currentThread().interrupt();
-          }
-          return;
-        }
-        if (transport == null) {
-          maybeClosePrematurely(Status.UNAVAILABLE.withDescription("Channel is shutdown"));
-          return;
-        }
-        createStream(transport);
-      } else {
-        transportFuture.addListener(this, callExecutor);
-      }
-    }
-  }
-
   static final class PendingMessage {
     final InputStream message;
     final boolean shouldBeCompressed;
@@ -137,7 +100,6 @@ final class DelayedStream implements ClientStream {
 
   DelayedStream(
       CallOptions callOptions,
-      ListenableFuture<ClientTransport> initialTransportFuture,
       Metadata headers,
       ClientStreamListener listener,
       Executor callExecutor,
@@ -147,14 +109,11 @@ final class DelayedStream implements ClientStream {
     this.callExecutor = callExecutor;
     this.method = method;
     this.callOptions = callOptions;
-
-    new StreamCreationTask(initialTransportFuture).run();
   }
 
   /**
    * Creates a stream on a presumably usable transport.
    */
-  @VisibleForTesting
   void createStream(ClientTransport transport) {
     synchronized (lock) {
       if (realStream == NOOP_CLIENT_STREAM) {
@@ -196,7 +155,7 @@ final class DelayedStream implements ClientStream {
     }
   }
 
-  private void maybeClosePrematurely(final Status reason) {
+  void maybeClosePrematurely(final Status reason) {
     synchronized (lock) {
       if (realStream == null) {
         realStream = NOOP_CLIENT_STREAM;
@@ -310,7 +269,6 @@ final class DelayedStream implements ClientStream {
       }
     }
   }
-
 
   private static final ClientStream NOOP_CLIENT_STREAM = new ClientStream() {
     @Override public void writeMessage(InputStream message) {}
