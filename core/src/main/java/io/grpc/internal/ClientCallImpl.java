@@ -171,8 +171,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
 
     if (stream == null) {
-      stream = new DelayedStream(
-          this, callOptions, transportFuture, headers, listener, callExecutor, method);
+      stream =
+          new DelayedStream(callOptions, transportFuture, headers, listener, callExecutor, method);
     }
 
     stream.setDecompressionRegistry(decompressorRegistry);

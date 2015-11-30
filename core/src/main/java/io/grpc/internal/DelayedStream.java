@@ -67,7 +67,7 @@ final class DelayedStream implements ClientStream {
   private final ClientStreamListener listener;
   private final CallOptions callOptions;
 
-  private final Object lock;
+  private final Object lock = new Object();
 
   // Volatile to be readable without synchronization in the fast path.
   // Writes are also done within synchronized(this).
@@ -135,14 +135,12 @@ final class DelayedStream implements ClientStream {
   }
 
   DelayedStream(
-      Object lock,
       CallOptions callOptions,
       ListenableFuture<ClientTransport> initialTransportFuture,
       Metadata headers,
       ClientStreamListener listener,
       Executor callExecutor,
       MethodDescriptor<?, ?> method) {
-    this.lock = lock;
     this.headers = headers;
     this.listener = listener;
     this.callExecutor = callExecutor;

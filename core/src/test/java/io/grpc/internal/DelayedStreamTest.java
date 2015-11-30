@@ -93,8 +93,8 @@ public class DelayedStreamTest {
   public void setUp() {
     MockitoAnnotations.initMocks(this);
 
-    stream = new DelayedStream(this, CallOptions.DEFAULT, transportFuture, headers, listener,
-        executor, method);
+    stream = new DelayedStream(CallOptions.DEFAULT, transportFuture, headers, listener, executor,
+        method);
   }
 
   @Test
@@ -106,8 +106,7 @@ public class DelayedStreamTest {
         .thenReturn(realStream);
     ListenableFuture<ClientTransport> future = Futures.immediateFuture(transport);
 
-    stream =
-        new DelayedStream(this, CallOptions.DEFAULT, future, headers, listener, executor, method);
+    stream = new DelayedStream(CallOptions.DEFAULT, future, headers, listener, executor, method);
 
     verify(transport).newStream(method, headers, listener);
   }
@@ -249,8 +248,7 @@ public class DelayedStreamTest {
     headers.put(GrpcUtil.TIMEOUT_KEY, 1L);
     ListenableFuture<ClientTransport> future = Futures.immediateFuture(transport);
 
-    stream = new DelayedStream(
-        this, callOptions, future, headers, listener, executor, method);
+    stream = new DelayedStream(callOptions, future, headers, listener, executor, method);
 
     verify(listener).closed(eq(Status.DEADLINE_EXCEEDED), isA(Metadata.class));
   }
