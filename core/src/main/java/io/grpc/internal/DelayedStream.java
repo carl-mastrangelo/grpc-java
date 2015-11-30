@@ -38,6 +38,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import io.grpc.CallOptions;
+import io.grpc.ClientCall;
 import io.grpc.Compressor;
 import io.grpc.DecompressorRegistry;
 import io.grpc.Metadata;
@@ -156,7 +157,7 @@ final class DelayedStream implements ClientStream {
   @VisibleForTesting
   void createStream(ClientTransport transport) {
     synchronized (lock) {
-      if (realStream == ClientCallImpl.NOOP_CLIENT_STREAM) {
+      if (realStream == NOOP_CLIENT_STREAM) {
         // Already cancelled
         return;
       }
@@ -198,7 +199,7 @@ final class DelayedStream implements ClientStream {
   private void maybeClosePrematurely(final Status reason) {
     synchronized (lock) {
       if (realStream == null) {
-        realStream = ClientCallImpl.NOOP_CLIENT_STREAM;
+        realStream = NOOP_CLIENT_STREAM;
         callExecutor.execute(new Runnable() {
           @Override
           public void run() {
@@ -309,4 +310,40 @@ final class DelayedStream implements ClientStream {
       }
     }
   }
+
+
+  private static final ClientStream NOOP_CLIENT_STREAM = new ClientStream() {
+    @Override public void writeMessage(InputStream message) {}
+
+    @Override public void flush() {}
+
+    @Override public void cancel(Status reason) {}
+
+    @Override public void halfClose() {}
+
+    @Override public void request(int numMessages) {}
+
+    @Override public void setCompressor(Compressor c) {}
+
+    @Override
+    public void setMessageCompression(boolean enable) {
+      // noop
+    }
+
+    /**
+     * Always returns {@code false}, since this is only used when the startup of the {@link
+     * ClientCall} fails (i.e. the {@link ClientCall} is closed).
+     */
+    @Override public boolean isReady() {
+      return false;
+    }
+
+    @Override
+    public void setDecompressionRegistry(DecompressorRegistry registry) {}
+
+    @Override
+    public String toString() {
+      return "NOOP_CLIENT_STREAM";
+    }
+  };
 }

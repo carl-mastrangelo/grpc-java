@@ -382,40 +382,5 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       });
     }
   }
-
-  static final ClientStream NOOP_CLIENT_STREAM = new ClientStream() {
-    @Override public void writeMessage(InputStream message) {}
-
-    @Override public void flush() {}
-
-    @Override public void cancel(Status reason) {}
-
-    @Override public void halfClose() {}
-
-    @Override public void request(int numMessages) {}
-
-    @Override public void setCompressor(Compressor c) {}
-
-    @Override
-    public void setMessageCompression(boolean enable) {
-      // noop
-    }
-
-    /**
-     * Always returns {@code false}, since this is only used when the startup of the {@link
-     * ClientCall} fails (i.e. the {@link ClientCall} is closed).
-     */
-    @Override public boolean isReady() {
-      return false;
-    }
-
-    @Override
-    public void setDecompressionRegistry(DecompressorRegistry registry) {}
-
-    @Override
-    public String toString() {
-      return "NOOP_CLIENT_STREAM";
-    }
-  };
 }
 
