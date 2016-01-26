@@ -88,6 +88,11 @@ public final class ProtocolNegotiators {
   public static ProtocolNegotiator serverPlaintext() {
     return new ProtocolNegotiator() {
       @Override
+      public Handler newHandler(Http2ConnectionHandler handler, String authority) {
+        return newHandler(handler);
+      }
+
+      @Override
       public Handler newHandler(final Http2ConnectionHandler handler) {
         return new Handler() {
           @Override
@@ -122,6 +127,12 @@ public final class ProtocolNegotiators {
   public static ProtocolNegotiator serverTls(final SslContext sslContext) {
     Preconditions.checkNotNull(sslContext, "sslContext");
     return new ProtocolNegotiator() {
+
+      @Override
+      public Handler newHandler(Http2ConnectionHandler handler, String authority) {
+        return newHandler(handler);
+      }
+
       @Override
       public Handler newHandler(Http2ConnectionHandler handler) {
         return new ServerTlsHandler(sslContext, handler);
@@ -252,6 +263,25 @@ public final class ProtocolNegotiators {
       };
       return new BufferUntilTlsNegotiatedHandler(sslBootstrap, handler);
     }
+
+    @Override
+    public Handler newHandler(Http2ConnectionHandler handler, String authority) {
+      return null;
+    }
+
+    private Handler newHandlerInternal(Http2ConnectionHandler handler) {
+      ChannelHandler sslBootstrap = new ChannelHandlerAdapter() {
+        @Override
+        public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+          SSLEngine sslEngine = sslContext.newEngine(ctx.alloc(), host, port);
+          SSLParameters sslParams = new SSLParameters();
+          sslParams.setEndpointIdentificationAlgorithm("HTTPS");
+          sslEngine.setSSLParameters(sslParams);
+          ctx.pipeline().replace(this, null, new SslHandler(sslEngine, false));
+        }
+      };
+      return new BufferUntilTlsNegotiatedHandler(sslBootstrap, handler);
+    }
   }
 
   /**
@@ -271,6 +301,12 @@ public final class ProtocolNegotiators {
           new HttpClientUpgradeHandler(httpClientCodec, upgradeCodec, 1000);
       return new BufferingHttp2UpgradeHandler(upgrader);
     }
+
+    @Override
+    public Handler newHandler(Http2ConnectionHandler handler, String authority) {
+      return newHandler(handler);
+
+    }
   }
 
   /**
@@ -286,6 +322,12 @@ public final class ProtocolNegotiators {
     @Override
     public Handler newHandler(Http2ConnectionHandler handler) {
       return new BufferUntilChannelActiveHandler(handler);
+    }
+
+    @Override
+    public Handler newHandler(Http2ConnectionHandler handler, String authority) {
+      checkNotNull(authority, "authority");
+      return newHandler(handler);
     }
   }
 

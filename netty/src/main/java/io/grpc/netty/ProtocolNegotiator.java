@@ -57,4 +57,10 @@ public interface ProtocolNegotiator {
    * has completed successfully, the provided handler is installed.
    */
   Handler newHandler(Http2ConnectionHandler handler);
+
+  /**
+   * Creates a new handler to control the protocol negotiation. Once the negotiation
+   * has completed successfully, the provided handler is installed.
+   */
+  Handler newHandler(Http2ConnectionHandler handler, String authority);
 }
