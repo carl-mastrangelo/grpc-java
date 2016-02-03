@@ -89,7 +89,8 @@ public class InProcessChannelBuilder extends
     }
 
     @Override
-    public ClientTransport newClientTransport(SocketAddress addr, String authority) {
+    public ClientTransport newClientTransport(
+        SocketAddress addr, String authority, String preface) {
       return new InProcessTransport(name);
     }
 

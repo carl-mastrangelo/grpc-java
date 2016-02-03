@@ -40,6 +40,7 @@ public interface ClientTransportFactory extends ReferenceCounted {
    *
    * @param serverAddress the address that the transport is connected to
    * @param authority the HTTP/2 authority of the server
+   * @param preface preface string, sent before any other traffic on the socket (even SSL)
    */
-  ClientTransport newClientTransport(SocketAddress serverAddress, String authority);
+  ClientTransport newClientTransport(SocketAddress serverAddress, String authority, String preface);
 }

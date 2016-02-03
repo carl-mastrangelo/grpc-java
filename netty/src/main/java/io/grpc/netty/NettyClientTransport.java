@@ -69,6 +69,8 @@ class NettyClientTransport implements ClientTransport {
   private final int flowControlWindow;
   private final int maxMessageSize;
   private final int maxHeaderListSize;
+  private final String preface;
+
   private ProtocolNegotiator.Handler negotiationHandler;
   private NettyClientHandler handler;
   // We should not send on the channel until negotiation completes. This is a hard requirement
@@ -85,7 +87,7 @@ class NettyClientTransport implements ClientTransport {
   NettyClientTransport(SocketAddress address, Class<? extends Channel> channelType,
                        EventLoopGroup group, ProtocolNegotiator negotiator,
                        int flowControlWindow, int maxMessageSize, int maxHeaderListSize,
-                       String authority) {
+                       String authority, String preface) {
     this.negotiator = Preconditions.checkNotNull(negotiator, "negotiator");
     this.address = Preconditions.checkNotNull(address, "address");
     this.group = Preconditions.checkNotNull(group, "group");
@@ -94,6 +96,7 @@ class NettyClientTransport implements ClientTransport {
     this.maxMessageSize = maxMessageSize;
     this.maxHeaderListSize = maxHeaderListSize;
     this.authority = new AsciiString(authority);
+    this.preface = preface;
   }
 
   @Override

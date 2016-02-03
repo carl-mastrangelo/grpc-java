@@ -144,8 +144,9 @@ public class ManagedChannelImplTest {
   public void setUp() throws Exception {
     MockitoAnnotations.initMocks(this);
     expectedUri = new URI(target);
-    when(mockTransportFactory.newClientTransport(any(SocketAddress.class), any(String.class)))
-        .thenReturn(mockTransport);
+    when(mockTransportFactory.newClientTransport(
+        any(SocketAddress.class), any(String.class), any(String.class)))
+            .thenReturn(mockTransport);
   }
 
   @After
@@ -186,12 +187,13 @@ public class ManagedChannelImplTest {
     ClientTransport mockTransport = mock(ClientTransport.class);
     ClientStream mockStream = mock(ClientStream.class);
     Metadata headers = new Metadata();
-    when(mockTransportFactory.newClientTransport(any(SocketAddress.class), any(String.class)))
+    when(mockTransportFactory.newClientTransport(
+            any(SocketAddress.class), any(String.class), any(String.class)))
         .thenReturn(mockTransport);
     when(mockTransport.newStream(same(method), same(headers))).thenReturn(mockStream);
     call.start(mockCallListener, headers);
     verify(mockTransportFactory, timeout(1000))
-        .newClientTransport(same(socketAddress), eq(authority));
+        .newClientTransport(same(socketAddress), eq(authority), any(String.class));
     verify(mockTransport, timeout(1000)).start(transportListenerCaptor.capture());
     ClientTransport.Listener transportListener = transportListenerCaptor.getValue();
     verify(mockTransport, timeout(1000)).newStream(same(method), same(headers));
@@ -374,7 +376,7 @@ public class ManagedChannelImplTest {
     // time and is not cancellable. The resolved address will still be passed to the LoadBalancer.
     nameResolverFactory.allResolved();
     verify(mockTransportFactory, never())
-        .newClientTransport(any(SocketAddress.class), any(String.class));
+        .newClientTransport(any(SocketAddress.class), any(String.class), any(String.class));
   }
 
   /**
@@ -388,9 +390,11 @@ public class ManagedChannelImplTest {
     final ResolvedServerInfo badServer = new ResolvedServerInfo(badAddress, Attributes.EMPTY);
     final ClientTransport goodTransport = mock(ClientTransport.class);
     final ClientTransport badTransport = mock(ClientTransport.class);
-    when(mockTransportFactory.newClientTransport(same(goodAddress), any(String.class)))
+    when(mockTransportFactory.newClientTransport(
+            same(goodAddress), any(String.class), any(String.class)))
         .thenReturn(goodTransport);
-    when(mockTransportFactory.newClientTransport(same(badAddress), any(String.class)))
+    when(mockTransportFactory.newClientTransport(
+            same(badAddress), any(String.class), any(String.class)))
         .thenReturn(badTransport);
 
     FakeNameResolverFactory nameResolverFactory =

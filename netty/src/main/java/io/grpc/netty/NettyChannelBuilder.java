@@ -304,11 +304,12 @@ public class NettyChannelBuilder extends AbstractManagedChannelImplBuilder<Netty
     }
 
     @Override
-    public ClientTransport newClientTransport(SocketAddress serverAddress, String authority) {
+    public ClientTransport newClientTransport(
+        SocketAddress serverAddress, String authority, String preface) {
       ProtocolNegotiator negotiator = protocolNegotiator != null ? protocolNegotiator :
           createProtocolNegotiator(authority, negotiationType, sslContext);
       return new NettyClientTransport(serverAddress, channelType, group, negotiator,
-          flowControlWindow, maxMessageSize, maxHeaderListSize, authority);
+          flowControlWindow, maxMessageSize, maxHeaderListSize, authority, preface);
     }
 
     @Override
