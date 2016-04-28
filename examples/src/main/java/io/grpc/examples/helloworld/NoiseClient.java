@@ -44,23 +44,29 @@ public class NoiseClient {
     final Semaphore sem = new Semaphore(10);
     final CountDownLatch latch = new CountDownLatch(COUNT);
 
-    ClientCall.Listener<Void> listen =
-        new ClientCall.Listener<Void>() {
-          @Override
-          public void onClose(Status status, Metadata trailers) {
-            latch.countDown();
-            sem.release();
-          }
-        };
+
     for (int i = 0; i < COUNT; i++) {
       sem.acquire();
 
-      ClientCall<Void, Void> call = channel.newCall(METHOD, CallOptions.DEFAULT);
+      final ClientCall<Void, Void> call = channel.newCall(METHOD, CallOptions.DEFAULT);
+      ClientCall.Listener<Void> listen =
+          new ClientCall.Listener<Void>() {
+            @Override
+            public void onMessage(Void message) {
+              call.cancel();
+
+            }
+            @Override
+            public void onClose(Status status, Metadata trailers) {
+              System.out.println(trailers);
+              latch.countDown();
+              sem.release();
+            }
+          };
       call.start(listen, new Metadata());
       call.sendMessage(null);
       call.halfClose();
       call.request(1);
-      call.cancel();
     }
 
     latch.await();
