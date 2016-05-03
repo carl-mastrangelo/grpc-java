@@ -316,12 +316,33 @@ class NettyClientHandler extends AbstractNettyHandler {
         && ((StreamBufferingEncoder) encoder()).numBufferedStreams() == 0;
   }
 
+  interface Command {
+    void run(ChannelPromise promise) throws Exception;
+  }
+
+  final class CreateStreamCommand2 implements Command {
+    private final NettyClientStream stream;
+    private final Http2Headers headers;
+
+    CreateStreamCommand2(NettyClientStream stream, Http2Headers headers) {
+      this.stream = stream;
+      this.headers = headers;
+    }
+
+    @Override
+    public void run(ChannelPromise promise) throws Exception {
+      createStream(stream, headers, promise);
+    }
+  }
+
   /**
    * Attempts to create a new stream from the given command. If there are too many active streams,
    * the creation request is queued.
    */
-  private void createStream(CreateStreamCommand command, final ChannelPromise promise)
-          throws Exception {
+  private void createStream(
+      final NettyClientStream stream,
+      final Http2Headers headers,
+      final ChannelPromise promise) throws Exception {
     if (lifecycleManager.getShutdownThrowable() != null) {
       // The connection is going away, just terminate the stream now.
       promise.setFailure(lifecycleManager.getShutdownThrowable());
@@ -345,8 +366,6 @@ class NettyClientHandler extends AbstractNettyHandler {
       return;
     }
 
-    final NettyClientStream stream = command.stream();
-    final Http2Headers headers = command.headers();
     stream.id(streamId);
 
     // Create an intermediate promise so that we can intercept the failure reported back to the
