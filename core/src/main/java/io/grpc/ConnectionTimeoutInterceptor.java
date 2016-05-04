@@ -10,13 +10,19 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class ConnectionTimeoutInterceptor implements ClientInterceptor {
+  public static final Context.Key<Long> CONNECTION_TIMEOUT_NANOS =
+      new Context.Key<Long>("CONNECTION_TIMEOUT_NANOS");
 
   private static final ScheduledExecutorService TIMER = SharedResourceHolder.get(TIMER_SERVICE);
 
   @Override
   public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
       MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, Channel next) {
-    return new CallMe<ReqT, RespT>(next.newCall(method, callOptions), 0, null);
+    if (CONNECTION_TIMEOUT_NANOS.get() != null) {
+      return new CallMe<ReqT, RespT>(
+          next.newCall(method, callOptions), CONNECTION_TIMEOUT_NANOS.get(), TimeUnit.NANOSECONDS);
+    }
+    return next.newCall(method, callOptions);
   }
 
   private static final class CallMe<ReqT, RespT>
