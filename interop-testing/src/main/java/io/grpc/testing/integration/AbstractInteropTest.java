@@ -562,7 +562,7 @@ public abstract class AbstractInteropTest {
     Assert.assertEquals(contextValue, trailersCapture.get().get(METADATA_KEY));
   }
 
-  @Test(timeout = 10000)
+  @Test(timeout = 1000000000)
   public void exchangeMetadataStreamingCall() throws Exception {
     TestServiceGrpc.TestServiceStub stub = TestServiceGrpc.newStub(channel);
 

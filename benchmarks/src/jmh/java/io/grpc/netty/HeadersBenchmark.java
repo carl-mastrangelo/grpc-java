@@ -95,4 +95,3 @@ public class HeadersBenchmark {
     return Utils.convertServerHeaders(metadata);
   }
 }
-
