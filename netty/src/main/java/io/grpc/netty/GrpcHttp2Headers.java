@@ -37,8 +37,6 @@ import io.netty.util.AsciiString;
 import java.util.Iterator;
 import java.util.Map.Entry;
 
-import javax.annotation.Nullable;
-
 /**
  * A custom implementation of Http2Headers that only includes methods used by gRPC.
  */
@@ -46,55 +44,40 @@ final class GrpcHttp2Headers extends AbstractHttp2Headers {
 
   private final AsciiString[] normalHeaders;
   private final AsciiString[] psuedoHeaders;
-  private final int psuedoHeadersCount;
+  private static final AsciiString[] EMPTY = new AsciiString[]{};
 
-  /**
-   * Client constructor.
-   */
-  GrpcHttp2Headers(byte[][] serializedMetadata, @Nullable AsciiString authority,
-      @Nullable AsciiString path, @Nullable AsciiString method, @Nullable AsciiString scheme,
-      @Nullable AsciiString key1, @Nullable AsciiString value1, @Nullable AsciiString key2,
-      @Nullable AsciiString value2, @Nullable AsciiString key3, @Nullable AsciiString value3) {
+  static GrpcHttp2Headers clientHeaders(byte[][] serializedMetadata, AsciiString authority,
+      AsciiString path, AsciiString method, AsciiString scheme, AsciiString userAgent) {
+    AsciiString[] psuedoHeaders = new AsciiString[] {
+        Http2Headers.PseudoHeaderName.AUTHORITY.value(), authority,
+        Http2Headers.PseudoHeaderName.PATH.value(), path,
+        Http2Headers.PseudoHeaderName.METHOD.value(), method,
+        Http2Headers.PseudoHeaderName.SCHEME.value(), scheme,
+        Utils.CONTENT_TYPE_HEADER, Utils.CONTENT_TYPE_GRPC,
+        Utils.TE_HEADER, Utils.TE_TRAILERS,
+        Utils.USER_AGENT, userAgent,
+    };
+    return new GrpcHttp2Headers(psuedoHeaders, serializedMetadata);
+  }
+
+  static GrpcHttp2Headers serverHeaders(byte[][] serializedMetadata) {
+    AsciiString[] psuedoHeaders = new AsciiString[] {
+        Http2Headers.PseudoHeaderName.STATUS.value(), Utils.STATUS_OK,
+        Utils.CONTENT_TYPE_HEADER, Utils.CONTENT_TYPE_GRPC,
+    };
+    return new GrpcHttp2Headers(psuedoHeaders, serializedMetadata);
+  }
+
+  static GrpcHttp2Headers serverTrailers(byte[][] serializedMetadata) {
+    return new GrpcHttp2Headers(EMPTY, serializedMetadata);
+  }
+
+  private GrpcHttp2Headers(AsciiString[] psuedoHeaders, byte[][] serializedMetadata) {
     normalHeaders = new AsciiString[serializedMetadata.length];
     for (int i = 0; i < normalHeaders.length; i++) {
       normalHeaders[i] = new AsciiString(serializedMetadata[i], false);
     }
-    psuedoHeaders = new AsciiString[14]; // Number of extra headers * 2
-    int count = 0;
-    count = addPseudoHeader(Http2Headers.PseudoHeaderName.AUTHORITY.value(), authority, count);
-    count = addPseudoHeader(Http2Headers.PseudoHeaderName.PATH.value(), path, count);
-    count = addPseudoHeader(Http2Headers.PseudoHeaderName.METHOD.value(), method, count);
-    count = addPseudoHeader(Http2Headers.PseudoHeaderName.SCHEME.value(), scheme, count);
-    count = addPseudoHeader(key1, value1, count);
-    count = addPseudoHeader(key2, value2, count);
-    count = addPseudoHeader(key3, value3, count);
-    psuedoHeadersCount = count;
-  }
-
-  /**
-   * Server constructor.
-   */
-  GrpcHttp2Headers(byte[][] serializedMetadata, @Nullable AsciiString status,
-      @Nullable AsciiString key1, @Nullable AsciiString value1) {
-    normalHeaders = new AsciiString[serializedMetadata.length];
-    for (int i = 0; i < normalHeaders.length; i++) {
-      normalHeaders[i] = new AsciiString(serializedMetadata[i], false);
-    }
-    psuedoHeaders = new AsciiString[4]; // Number of extra headers * 2
-    int count = 0;
-    count = addPseudoHeader(Http2Headers.PseudoHeaderName.STATUS.value(), status, count);
-    count = addPseudoHeader(key1, value1, count);
-    psuedoHeadersCount = count;
-  }
-
-  private int addPseudoHeader(
-      AsciiString headerKey, @Nullable AsciiString headerValue, int currentCount) {
-    if (headerValue != null) {
-      psuedoHeaders[currentCount] = headerKey;
-      psuedoHeaders[currentCount + 1] = headerValue;
-      return currentCount + 2;
-    }
-    return currentCount;
+    this.psuedoHeaders = psuedoHeaders;
   }
 
   @Override
@@ -104,7 +87,7 @@ final class GrpcHttp2Headers extends AbstractHttp2Headers {
 
   @Override
   public int size() {
-    return (normalHeaders.length + psuedoHeadersCount) / 2;
+    return (normalHeaders.length + psuedoHeaders.length) / 2;
   }
 
   private class Itr implements Iterator<Entry<CharSequence, CharSequence>> {
@@ -117,7 +100,7 @@ final class GrpcHttp2Headers extends AbstractHttp2Headers {
         currentArray = psuedoHeaders;
       }
       if (currentArray == psuedoHeaders) {
-        if (idx < psuedoHeadersCount) {
+        if (idx < psuedoHeaders.length) {
           return true;
         } else {
           currentArray = normalHeaders;

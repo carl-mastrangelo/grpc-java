@@ -121,22 +121,17 @@ class Utils {
     Preconditions.checkNotNull(defaultPath, "defaultPath");
     Preconditions.checkNotNull(authority, "authority");
 
-    return new GrpcHttp2Headers(
+    return GrpcHttp2Headers.clientHeaders(
         TransportFrameUtil.toHttp2Headers(headers),
         authority,
         defaultPath,
         HTTP_METHOD,
         scheme,
-        CONTENT_TYPE_HEADER, CONTENT_TYPE_GRPC,
-        TE_HEADER, TE_TRAILERS,
-        USER_AGENT, userAgent);
+        userAgent);
   }
 
   public static Http2Headers convertServerHeaders(Metadata headers) {
-    return new GrpcHttp2Headers(
-        TransportFrameUtil.toHttp2Headers(headers),
-        STATUS_OK,
-        CONTENT_TYPE_HEADER, CONTENT_TYPE_GRPC);
+    return GrpcHttp2Headers.serverHeaders(TransportFrameUtil.toHttp2Headers(headers));
   }
 
   public static Metadata convertTrailers(Http2Headers http2Headers) {
@@ -147,10 +142,7 @@ class Utils {
     if (!headersSent) {
       return convertServerHeaders(trailers);
     }
-    return new GrpcHttp2Headers(
-        TransportFrameUtil.toHttp2Headers(trailers),
-        null /* status */,
-        null, null);
+    return GrpcHttp2Headers.serverTrailers(TransportFrameUtil.toHttp2Headers(trailers));
   }
 
   public static Status statusFromThrowable(Throwable t) {
