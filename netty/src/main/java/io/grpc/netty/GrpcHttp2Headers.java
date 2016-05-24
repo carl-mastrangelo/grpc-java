@@ -36,6 +36,7 @@ import io.netty.util.AsciiString;
 
 import java.util.Iterator;
 import java.util.Map.Entry;
+import java.util.NoSuchElementException;
 
 /**
  * A custom implementation of Http2Headers that only includes methods used by gRPC.
@@ -96,23 +97,22 @@ final class GrpcHttp2Headers extends AbstractHttp2Headers {
 
     @Override
     public boolean hasNext() {
-      if (currentArray == null) {
-        currentArray = preHeaders;
-      }
-      if (currentArray == preHeaders) {
-        if (idx < preHeaders.length) {
-          return true;
-        } else {
-          currentArray = normalHeaders;
-          idx = 0;
-        }
-      }
-
-      return idx < normalHeaders.length;
+      return currentArray == normalHeaders && idx >= normalHeaders.length;
     }
 
     @Override
     public Entry<CharSequence, CharSequence> next() {
+      if (currentArray == null) {
+        currentArray = preHeaders;
+      }
+      if (currentArray == preHeaders && idx >= preHeaders.length) {
+        currentArray = normalHeaders;
+        idx = 0;
+      }
+      if (!hasNext()) {
+        throw new NoSuchElementException();
+      }
+
       final AsciiString key = currentArray[idx];
       final AsciiString value = currentArray[idx + 1];
       idx += 2;
@@ -132,6 +132,11 @@ final class GrpcHttp2Headers extends AbstractHttp2Headers {
           return key;
         }
       };
+    }
+
+    @Override
+    public void remove() {
+      throw new UnsupportedOperationException();
     }
   }
 }
