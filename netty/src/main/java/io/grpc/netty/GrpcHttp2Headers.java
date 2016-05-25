@@ -92,30 +92,34 @@ final class GrpcHttp2Headers extends AbstractHttp2Headers {
   }
 
   private class Itr implements Iterator<Entry<CharSequence, CharSequence>> {
-    private int idx;
-    private AsciiString[] currentArray;
+    private int normalIdx;
+    private int preIdx;
+    private AsciiString[] currentArray = preHeaders;
 
     @Override
     public boolean hasNext() {
-      return currentArray == normalHeaders && idx >= normalHeaders.length;
+      return preIdx < preHeaders.length || normalIdx < normalHeaders.length;
     }
 
     @Override
     public Entry<CharSequence, CharSequence> next() {
-      if (currentArray == null) {
-        currentArray = preHeaders;
-      }
-      if (currentArray == preHeaders && idx >= preHeaders.length) {
-        currentArray = normalHeaders;
-        idx = 0;
-      }
       if (!hasNext()) {
         throw new NoSuchElementException();
+      }
+      AsciiString[] currentArray;
+      int idx;
+      if (preIdx < preHeaders.length) {
+        currentArray = preHeaders;
+        idx = preIdx;
+        preIdx += 2;
+      } else {
+        currentArray = normalHeaders;
+        idx = normalIdx;
+        normalIdx += 2;
       }
 
       final AsciiString key = currentArray[idx];
       final AsciiString value = currentArray[idx + 1];
-      idx += 2;
       return new Entry<CharSequence, CharSequence>() {
         @Override
         public CharSequence setValue(CharSequence value) {
