@@ -43,8 +43,8 @@ import java.util.NoSuchElementException;
  */
 final class GrpcHttp2Headers extends AbstractHttp2Headers {
 
-  private final AsciiString[] normalHeaders;
-  private final AsciiString[] preHeaders;
+  final AsciiString[] normalHeaders;
+  final AsciiString[] preHeaders;
   private static final AsciiString[] EMPTY = new AsciiString[]{};
 
   static GrpcHttp2Headers clientRequestHeaders(byte[][] serializedMetadata, AsciiString authority,

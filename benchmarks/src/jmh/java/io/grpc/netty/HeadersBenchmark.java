@@ -33,7 +33,12 @@ package io.grpc.netty;
 
 import io.grpc.Metadata;
 import io.grpc.Metadata.AsciiMarshaller;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.handler.codec.http2.DefaultHttp2HeadersEncoder;
+import io.netty.handler.codec.http2.Http2Exception;
 import io.netty.handler.codec.http2.Http2Headers;
+import io.netty.handler.codec.http2.Http2HeadersEncoder;
 import io.netty.util.AsciiString;
 
 import org.openjdk.jmh.annotations.Benchmark;
@@ -74,13 +79,16 @@ public class HeadersBenchmark {
   private AsciiString authority = new AsciiString("authority.googleapis.bogus");
   private AsciiString userAgent = new AsciiString("grpc-java-netty");
 
+  private final ByteBuf scratch = PooledByteBufAllocator.DEFAULT.buffer(4096);
+  private Http2HeadersEncoder enc = new DefaultHttp2HeadersEncoder();
+
   @Setup
   public void setUp() throws Exception {
     for (int i = 0; i < headerCount; i++) {
       metadata.put(Metadata.Key.of("key-" + i, keyMarshaller), UUID.randomUUID().toString());
     }
   }
-
+/*
   @Benchmark
   @BenchmarkMode(Mode.SampleTime)
   @OutputTimeUnit(TimeUnit.NANOSECONDS)
@@ -93,5 +101,14 @@ public class HeadersBenchmark {
   @OutputTimeUnit(TimeUnit.NANOSECONDS)
   public Http2Headers convertServerHeaders() {
     return Utils.convertServerHeaders(metadata);
+  }
+*/
+  @Benchmark
+  @BenchmarkMode(Mode.SampleTime)
+  @OutputTimeUnit(TimeUnit.NANOSECONDS)
+  public ByteBuf serializeHeaders() throws Http2Exception {
+    Http2Headers h = Utils.convertClientHeaders(metadata, scheme, defaultPath, authority, userAgent);
+    enc.encodeHeaders(h, scratch);
+    return scratch;
   }
 }
