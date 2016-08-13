@@ -38,6 +38,7 @@ import io.grpc.benchmarks.Utils;
 import io.grpc.benchmarks.proto.BenchmarkServiceGrpc;
 import io.grpc.benchmarks.proto.Messages.SimpleRequest;
 import io.grpc.benchmarks.proto.Messages.SimpleResponse;
+import io.grpc.benchmarks.proto.Services.NonBytesMsg;
 import io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.NettyServerBuilder;
 import io.grpc.stub.StreamObserver;
@@ -200,6 +201,12 @@ public class AsyncServer {
   }
 
   public static class BenchmarkServiceImpl extends BenchmarkServiceGrpc.BenchmarkServiceImplBase {
+
+    @Override
+    public void nonBytesThing(NonBytesMsg request, StreamObserver<NonBytesMsg> responseObserver) {
+      responseObserver.onNext(request);
+      responseObserver.onCompleted();
+    }
 
     @Override
     public void unaryCall(SimpleRequest request, StreamObserver<SimpleResponse> responseObserver) {

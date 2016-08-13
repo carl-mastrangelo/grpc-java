@@ -45,6 +45,15 @@ public class BenchmarkServiceGrpc {
               "grpc.testing.BenchmarkService", "StreamingCall"),
           io.grpc.protobuf.ProtoUtils.marshaller(io.grpc.benchmarks.proto.Messages.SimpleRequest.getDefaultInstance()),
           io.grpc.protobuf.ProtoUtils.marshaller(io.grpc.benchmarks.proto.Messages.SimpleResponse.getDefaultInstance()));
+  @io.grpc.ExperimentalApi("https://github.com/grpc/grpc-java/issues/1901")
+  public static final io.grpc.MethodDescriptor<io.grpc.benchmarks.proto.Services.NonBytesMsg,
+      io.grpc.benchmarks.proto.Services.NonBytesMsg> METHOD_NON_BYTES_THING =
+      io.grpc.MethodDescriptor.create(
+          io.grpc.MethodDescriptor.MethodType.UNARY,
+          generateFullMethodName(
+              "grpc.testing.BenchmarkService", "NonBytesThing"),
+          io.grpc.protobuf.ProtoUtils.marshaller(io.grpc.benchmarks.proto.Services.NonBytesMsg.getDefaultInstance()),
+          io.grpc.protobuf.ProtoUtils.marshaller(io.grpc.benchmarks.proto.Services.NonBytesMsg.getDefaultInstance()));
 
   /**
    * Creates a new async stub that supports all call types for the service
@@ -95,6 +104,13 @@ public class BenchmarkServiceGrpc {
       return asyncUnimplementedStreamingCall(METHOD_STREAMING_CALL, responseObserver);
     }
 
+    /**
+     */
+    public void nonBytesThing(io.grpc.benchmarks.proto.Services.NonBytesMsg request,
+        io.grpc.stub.StreamObserver<io.grpc.benchmarks.proto.Services.NonBytesMsg> responseObserver) {
+      asyncUnimplementedUnaryCall(METHOD_NON_BYTES_THING, responseObserver);
+    }
+
     @java.lang.Override public io.grpc.ServerServiceDefinition bindService() {
       return io.grpc.ServerServiceDefinition.builder(getServiceDescriptor())
           .addMethod(
@@ -111,6 +127,13 @@ public class BenchmarkServiceGrpc {
                 io.grpc.benchmarks.proto.Messages.SimpleRequest,
                 io.grpc.benchmarks.proto.Messages.SimpleResponse>(
                   this, METHODID_STREAMING_CALL)))
+          .addMethod(
+            METHOD_NON_BYTES_THING,
+            asyncUnaryCall(
+              new MethodHandlers<
+                io.grpc.benchmarks.proto.Services.NonBytesMsg,
+                io.grpc.benchmarks.proto.Services.NonBytesMsg>(
+                  this, METHODID_NON_BYTES_THING)))
           .build();
     }
   }
@@ -156,6 +179,14 @@ public class BenchmarkServiceGrpc {
       return asyncBidiStreamingCall(
           getChannel().newCall(METHOD_STREAMING_CALL, getCallOptions()), responseObserver);
     }
+
+    /**
+     */
+    public void nonBytesThing(io.grpc.benchmarks.proto.Services.NonBytesMsg request,
+        io.grpc.stub.StreamObserver<io.grpc.benchmarks.proto.Services.NonBytesMsg> responseObserver) {
+      asyncUnaryCall(
+          getChannel().newCall(METHOD_NON_BYTES_THING, getCallOptions()), request, responseObserver);
+    }
   }
 
   /**
@@ -185,6 +216,13 @@ public class BenchmarkServiceGrpc {
     public io.grpc.benchmarks.proto.Messages.SimpleResponse unaryCall(io.grpc.benchmarks.proto.Messages.SimpleRequest request) {
       return blockingUnaryCall(
           getChannel(), METHOD_UNARY_CALL, getCallOptions(), request);
+    }
+
+    /**
+     */
+    public io.grpc.benchmarks.proto.Services.NonBytesMsg nonBytesThing(io.grpc.benchmarks.proto.Services.NonBytesMsg request) {
+      return blockingUnaryCall(
+          getChannel(), METHOD_NON_BYTES_THING, getCallOptions(), request);
     }
   }
 
@@ -217,10 +255,19 @@ public class BenchmarkServiceGrpc {
       return futureUnaryCall(
           getChannel().newCall(METHOD_UNARY_CALL, getCallOptions()), request);
     }
+
+    /**
+     */
+    public com.google.common.util.concurrent.ListenableFuture<io.grpc.benchmarks.proto.Services.NonBytesMsg> nonBytesThing(
+        io.grpc.benchmarks.proto.Services.NonBytesMsg request) {
+      return futureUnaryCall(
+          getChannel().newCall(METHOD_NON_BYTES_THING, getCallOptions()), request);
+    }
   }
 
   private static final int METHODID_UNARY_CALL = 0;
-  private static final int METHODID_STREAMING_CALL = 1;
+  private static final int METHODID_NON_BYTES_THING = 1;
+  private static final int METHODID_STREAMING_CALL = 2;
 
   private static class MethodHandlers<Req, Resp> implements
       io.grpc.stub.ServerCalls.UnaryMethod<Req, Resp>,
@@ -242,6 +289,10 @@ public class BenchmarkServiceGrpc {
         case METHODID_UNARY_CALL:
           serviceImpl.unaryCall((io.grpc.benchmarks.proto.Messages.SimpleRequest) request,
               (io.grpc.stub.StreamObserver<io.grpc.benchmarks.proto.Messages.SimpleResponse>) responseObserver);
+          break;
+        case METHODID_NON_BYTES_THING:
+          serviceImpl.nonBytesThing((io.grpc.benchmarks.proto.Services.NonBytesMsg) request,
+              (io.grpc.stub.StreamObserver<io.grpc.benchmarks.proto.Services.NonBytesMsg>) responseObserver);
           break;
         default:
           throw new AssertionError();
@@ -265,7 +316,8 @@ public class BenchmarkServiceGrpc {
   public static io.grpc.ServiceDescriptor getServiceDescriptor() {
     return new io.grpc.ServiceDescriptor(SERVICE_NAME,
         METHOD_UNARY_CALL,
-        METHOD_STREAMING_CALL);
+        METHOD_STREAMING_CALL,
+        METHOD_NON_BYTES_THING);
   }
 
 }

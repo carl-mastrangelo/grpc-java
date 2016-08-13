@@ -41,6 +41,8 @@ import io.grpc.benchmarks.proto.BenchmarkServiceGrpc;
 import io.grpc.benchmarks.proto.Messages.Payload;
 import io.grpc.benchmarks.proto.Messages.SimpleRequest;
 import io.grpc.benchmarks.proto.Messages.SimpleResponse;
+import io.grpc.benchmarks.proto.Services.NonBytesMsg;
+import io.grpc.benchmarks.proto.Services.NonBytesMsg.Builder;
 import io.grpc.benchmarks.qps.AsyncServer;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
@@ -170,6 +172,12 @@ public class TransportBenchmark {
     stub = BenchmarkServiceGrpc.newBlockingStub(channel);
     // Wait for channel to start
     stub.unaryCall(SimpleRequest.getDefaultInstance());
+
+    Builder bb = NonBytesMsg.newBuilder();
+    for (int i = 0; i < 1000; i++) {
+      bb.addNum(Integer.MAX_VALUE  / 1000 * i);
+    }
+    m = bb.build();
   }
 
   @TearDown
@@ -198,10 +206,13 @@ public class TransportBenchmark {
       .setPayload(Payload.newBuilder().setBody(ByteString.copyFrom(new byte[1024])))
       .build();
 
+
+  private NonBytesMsg m;
+
   @Benchmark
   @BenchmarkMode(Mode.SampleTime)
   @OutputTimeUnit(TimeUnit.NANOSECONDS)
-  public SimpleResponse unaryCall1024() {
-    return stub.unaryCall(simpleRequest);
+  public NonBytesMsg nonBytesMsg() {
+    return stub.nonBytesThing(m);
   }
 }
