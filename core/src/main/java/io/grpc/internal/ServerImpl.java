@@ -377,7 +377,7 @@ public final class ServerImpl extends io.grpc.Server {
     }
 
     private Context.CancellableContext createContext(final ServerStream stream, Metadata headers) {
-      Long timeoutNanos = headers.get(TIMEOUT_KEY);
+      Long timeoutNanos = /*headers.get(TIMEOUT_KEY) */ null;
 
       if (timeoutNanos == null) {
         return rootContext.withCancellation();

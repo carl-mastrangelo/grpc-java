@@ -49,6 +49,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -139,24 +141,33 @@ public final class Metadata {
   /** The number of headers stored by this metadata.  */
   private int storeCount;
 
+  private static final Logger log = Logger.getLogger(Metadata.class.getName());
   /**
    * Constructor called by the transport layer when it receives binary metadata.
    */
   // TODO(louiscryan): Convert to use ByteString so we can cache transformations
   @Internal
   public Metadata(byte[]... binaryValues) {
+    RuntimeException ex = new RuntimeException("Don't");
     checkArgument(binaryValues.length % 2 == 0,
         "Odd number of key-value pairs: %s", binaryValues.length);
     for (int i = 0; i < binaryValues.length; i += 2) {
       String name = new String(binaryValues[i], US_ASCII);
       storeAdd(name, new MetadataEntry(name.endsWith(BINARY_HEADER_SUFFIX), binaryValues[i + 1]));
     }
+
+    log.log(Level.WARNING, "Don't", ex);
+    throw ex;
   }
 
   /**
    * Constructor called by the application layer when it wants to send metadata.
    */
-  public Metadata() {}
+  public Metadata() {
+    RuntimeException ex = new RuntimeException("Don't");
+    log.log(Level.WARNING, "Don't", ex);
+    throw ex;
+  }
 
   private void storeAdd(String name, MetadataEntry value) {
     List<MetadataEntry> values = store.get(name);

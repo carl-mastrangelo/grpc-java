@@ -78,11 +78,11 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
     this.stream = stream;
     this.method = method;
     this.context = context;
-    this.messageAcceptEncoding = inboundHeaders.get(MESSAGE_ACCEPT_ENCODING_KEY);
+    this.messageAcceptEncoding = /*inboundHeaders.get(MESSAGE_ACCEPT_ENCODING_KEY)*/ null;
     this.decompressorRegistry = decompressorRegistry;
     this.compressorRegistry = compressorRegistry;
 
-    if (inboundHeaders.containsKey(MESSAGE_ENCODING_KEY)) {
+    if (/*inboundHeaders.containsKey(MESSAGE_ENCODING_KEY)*/ false) {
       String encoding = inboundHeaders.get(MESSAGE_ENCODING_KEY);
       Decompressor decompressor = decompressorRegistry.lookupDecompressor(encoding);
       if (decompressor == null) {
@@ -104,7 +104,7 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
     checkState(!sendHeadersCalled, "sendHeaders has already been called");
     checkState(!closeCalled, "call is closed");
 
-    headers.removeAll(MESSAGE_ENCODING_KEY);
+    //headers.removeAll(MESSAGE_ENCODING_KEY);
     if (compressor == null) {
       compressor = Codec.Identity.NONE;
     } else {
@@ -121,14 +121,14 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
     }
 
     // Always put compressor, even if it's identity.
-    headers.put(MESSAGE_ENCODING_KEY, compressor.getMessageEncoding());
+    //headers.put(MESSAGE_ENCODING_KEY, compressor.getMessageEncoding());
 
     stream.setCompressor(compressor);
 
-    headers.removeAll(MESSAGE_ACCEPT_ENCODING_KEY);
+    //headers.removeAll(MESSAGE_ACCEPT_ENCODING_KEY);
     String advertisedEncodings = decompressorRegistry.getRawAdvertisedMessageEncodings();
     if (!advertisedEncodings.isEmpty()) {
-      headers.put(MESSAGE_ACCEPT_ENCODING_KEY, advertisedEncodings);
+      //headers.put(MESSAGE_ACCEPT_ENCODING_KEY, advertisedEncodings);
     }
 
     // Don't check if sendMessage has been called, since it requires that sendHeaders was already

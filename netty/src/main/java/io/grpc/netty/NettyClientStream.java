@@ -50,6 +50,9 @@ import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2Stream;
 import io.netty.util.AsciiString;
 
+import java.util.Iterator;
+import java.util.Map.Entry;
+
 import javax.annotation.Nullable;
 
 /**
@@ -74,7 +77,7 @@ abstract class NettyClientStream extends Http2ClientStream implements StreamIdHo
       AsciiString userAgent) {
     super(new NettyWritableBufferAllocator(channel.alloc()), maxMessageSize);
     this.method = checkNotNull(method, "method");
-    this.headers = checkNotNull(headers, "headers");
+    //this.headers = checkNotNull(headers, "headers");
     this.writeQueue = handler.getWriteQueue();
     this.channel = checkNotNull(channel, "channel");
     this.handler = checkNotNull(handler, "handler");
@@ -94,10 +97,11 @@ abstract class NettyClientStream extends Http2ClientStream implements StreamIdHo
     super.start(listener);
 
     // Convert the headers into Netty HTTP/2 headers.
-    AsciiString defaultPath = new AsciiString("/" + method.getFullMethodName());
-    headers.removeAll(GrpcUtil.USER_AGENT_KEY);
+    //AsciiString defaultPath = new AsciiString("/" + method.getFullMethodName());
+    //headers.removeAll(GrpcUtil.USER_AGENT_KEY);
     Http2Headers http2Headers
-        = Utils.convertClientHeaders(headers, scheme, defaultPath, authority, userAgent);
+        // = Utils.convertClientHeaders(headers, scheme, defaultPath, authority, userAgent);
+        = NettyServerStream.emptyHeaders;
     headers = null;
 
     ChannelFutureListener failureListener = new ChannelFutureListener() {
@@ -168,11 +172,17 @@ abstract class NettyClientStream extends Http2ClientStream implements StreamIdHo
     return http2Stream;
   }
 
+  private static final Metadata hackTrailers;
+  static {
+    hackTrailers = new Metadata();
+
+  }
+
   void transportHeadersReceived(Http2Headers headers, boolean endOfStream) {
     if (endOfStream) {
-      transportTrailersReceived(Utils.convertTrailers(headers));
+      transportTrailersReceived(/*Utils.convertTrailers(headers)*/ hackTrailers);
     } else {
-      transportHeadersReceived(Utils.convertHeaders(headers));
+      transportHeadersReceived(/*Utils.convertHeaders(headers)*/ hackTrailers);
     }
   }
 

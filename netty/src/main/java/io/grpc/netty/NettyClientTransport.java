@@ -117,7 +117,7 @@ class NettyClientTransport implements ConnectionClientTransport {
   public ClientStream newStream(MethodDescriptor<?, ?> method, Metadata headers, CallOptions
       callOptions) {
     Preconditions.checkNotNull(method, "method");
-    Preconditions.checkNotNull(headers, "headers");
+    //Preconditions.checkNotNull(headers, "headers");
     return new NettyClientStream(method, headers, channel, handler, maxMessageSize, authority,
         negotiationHandler.scheme(), userAgent) {
       @Override

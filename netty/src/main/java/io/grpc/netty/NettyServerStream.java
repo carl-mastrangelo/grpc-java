@@ -46,6 +46,8 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2Stream;
 
+import java.util.Iterator;
+import java.util.Map.Entry;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -113,7 +115,7 @@ class NettyServerStream extends AbstractServerStream {
     @Override
     public void writeHeaders(Metadata headers) {
       writeQueue.enqueue(new SendResponseHeadersCommand(transportState(),
-          Utils.convertServerHeaders(headers), false),
+          /*Utils.convertServerHeaders(headers)*/ emptyHeaders, false),
           true);
     }
 
@@ -141,7 +143,7 @@ class NettyServerStream extends AbstractServerStream {
 
     @Override
     public void writeTrailers(Metadata trailers, boolean headersSent) {
-      Http2Headers http2Trailers = Utils.convertTrailers(trailers, headersSent);
+      Http2Headers http2Trailers = /*Utils.convertTrailers(trailers, headersSent)*/ emptyHeaders;
       writeQueue.enqueue(
           new SendResponseHeadersCommand(transportState(), http2Trailers, true), true);
     }
@@ -182,8 +184,31 @@ class NettyServerStream extends AbstractServerStream {
       super.inboundDataReceived(new NettyReadableBuffer(frame.retain()), endOfStream);
     }
 
+    @Override
     public Integer id() {
       return http2Stream.id();
     }
   }
+
+  static final Http2Headers emptyHeaders = new AbstractHttp2Headers() {
+    @Override
+    public int size() {
+      return 0;
+    }
+
+    @Override
+    public Iterator<Entry<CharSequence, CharSequence>> iterator() {
+      return new Iterator<Entry<CharSequence, CharSequence>>() {
+        @Override
+        public boolean hasNext() {
+          return false;
+        }
+
+        @Override
+        public Entry<CharSequence, CharSequence> next() {
+          return null;
+        }
+      };
+    }
+  };
 }

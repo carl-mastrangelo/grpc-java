@@ -156,7 +156,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
   public void start(final Listener<RespT> observer, Metadata headers) {
     checkState(stream == null, "Already started");
     checkNotNull(observer, "observer");
-    checkNotNull(headers, "headers");
+    //checkNotNull(headers, "headers");
 
     if (context.isCancelled()) {
       // Context is already cancelled so no need to create a real stream, just notify the observer
