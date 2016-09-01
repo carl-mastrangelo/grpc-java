@@ -38,11 +38,12 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -145,8 +146,8 @@ public final class Metadata {
     typedValues = new Object[size];
 
     for (int i = 0; i < binaryValues.length; i += 2) {
-      names[i/2] = binaryValues[i];
-      values[i/2] = binaryValues[i + 1];
+      names[i / 2] = binaryValues[i];
+      values[i / 2] = binaryValues[i + 1];
     }
   }
 
@@ -173,7 +174,7 @@ public final class Metadata {
    */
   public boolean containsKey(Key<?> key) {
     for (int i = 0; i < size; i++) {
-      if (key.asciiName() == names[i]) {
+      if (Arrays.equals(key.asciiName(), names[i])) {
         return true;
       }
     }
@@ -185,13 +186,14 @@ public final class Metadata {
    * @return the parsed metadata entry or null if there are none.
    */
   public <T> T get(Key<T> key) {
-    for (int i = size - 1; i >= 0; i++) {
-      if (key.asciiName() == names[i]) {
+    for (int i = size - 1; i >= 0; i--) {
+      if (Arrays.equals(key.asciiName(), names[i])) {
         if (typedValues[i] == null) {
           typedValues[i] = key.parseBytes(values[i]);
         }
-        // take THAT typesafety!
-        return (T) typedValues[i];
+        @SuppressWarnings("unchecked") // take THAT typesafety!
+        T ret = (T) typedValues[i];
+        return ret;
       }
     }
     return null;
@@ -204,26 +206,28 @@ public final class Metadata {
    */
   public <T> Iterable<T> getAll(final Key<T> key) {
     for (int i = 0; i < size; i++) {
-      if (names[i] == key.asciiName()) {
+      if (Arrays.equals(key.asciiName(), names[i])) {
         final int k = i;
         return new Iterable<T>() {
           @Override
           public Iterator<T> iterator() {
             return new Iterator<T>() {
-              int m = k;
+              int lastIdx = k;
+
               @Override
               public boolean hasNext() {
-                return m < size;
+                return lastIdx < size;
               }
 
               @Override
               public T next() {
-                if (typedValues[m] == null) {
-                  typedValues[m] = key.parseBytes(values[m]);
+                if (typedValues[lastIdx] == null) {
+                  typedValues[lastIdx] = key.parseBytes(values[lastIdx]);
                 }
-                T ret = (T) typedValues[m++];
-                for (; m < size; m++) {
-                  if (names[m] == key.asciiName()) {
+                @SuppressWarnings("unchecked")
+                T ret = (T) typedValues[lastIdx++];
+                for (; lastIdx < size; lastIdx++) {
+                  if (Arrays.equals(key.asciiName(), names[lastIdx])) {
                     break;
                   }
                 }
@@ -280,7 +284,7 @@ public final class Metadata {
     if (size != 0) {
       System.arraycopy(names, 0, newNames, 0, size);
       System.arraycopy(values, 0, newValues, 0, size);
-      System.arraycopy(names, 0, newNames, 0, size);
+      System.arraycopy(typedValues, 0, newTypedValues, 0, size);
     }
     names = newNames;
     values = newValues;
@@ -299,7 +303,8 @@ public final class Metadata {
     Preconditions.checkNotNull(key, "key");
     Preconditions.checkNotNull(value, "value");
     for (int i = 0; i < size; i++) {
-      if (names[i] == key.asciiName()) {
+      if (Arrays.equals(key.asciiName(), names[i])) {
+        @SuppressWarnings("unchecked")
         T stored = typedValues[i] != null ? (T) typedValues[i] : key.parseBytes(values[i]);
         if (!value.equals(stored)) {
           continue;
@@ -327,14 +332,16 @@ public final class Metadata {
     int ri = 0;
     List<T> ret = null;
     for (; ri < size; ri++) {
-      if (names[ri] == key.asciiName()) {
+      if (Arrays.equals(key.asciiName(), names[ri])) {
         ret = ret != null ? ret : new LinkedList<T>();
-        ret.add(typedValues[ri] != null ? (T) typedValues[ri] : key.parseBytes(values[ri]));
+        @SuppressWarnings("unchecked")
+        T removed = typedValues[ri] != null ? (T) typedValues[ri] : key.parseBytes(values[ri]);
+        ret.add(removed);
         continue;
       }
       names[wi] = names[ri];
       values[wi] = values[ri];
-      typedValues[wi] = values[ri];
+      typedValues[wi] = typedValues[ri];
       wi++;
     }
     int newSize = wi;
@@ -367,8 +374,8 @@ public final class Metadata {
     // 2x for keys + values
     byte[][] serialized = new byte[size * 2][];
     for (int i = 0; i < size; i++) {
-      serialized[i*2] = names[i];
-      serialized[i*2 + 1] = values[i];
+      serialized[i * 2] = names[i];
+      serialized[i * 2 + 1] = values[i];
     }
     return serialized;
   }
@@ -395,25 +402,28 @@ public final class Metadata {
    */
   public void merge(Metadata other, Set<Key<?>> keys) {
     Preconditions.checkNotNull(other, "other");
-    Map<byte[], Key<?>> asciiKeys = new IdentityHashMap<byte[], Key<?>>(keys.size());
+    Map<ByteBuffer, Key<?>> asciiKeys = new HashMap<ByteBuffer, Key<?>>(keys.size());
     for (Key<?> key : keys) {
-      asciiKeys.put(key.asciiName(), key);
+      asciiKeys.put(ByteBuffer.wrap(key.asciiName()), key);
     }
     for (int i = 0; i < other.size; i++) {
-      if (asciiKeys.containsKey(other.names[i])) {
+      ByteBuffer wrappedNamed = ByteBuffer.wrap(other.names[i]);
+      Key<?> key = null;
+      if ((key = asciiKeys.get(wrappedNamed)) != null) {
         if (size == 0 || size == names.length) {
-          expand(size + (size >>> 1));
+          expand(Math.max(2, size + (size >>> 1)));
         }
         names[size] = other.names[i];
         values[size] = other.values[i];
-        typedValues[size] = other.typedValues[i] != null ?
-            other.typedValues[i] : asciiKeys.get(other.names[i]).parseBytes(other.values[i]);
+        typedValues[size] = other.typedValues[i] != null
+            ? other.typedValues[i] : key.parseBytes(other.values[i]);
         size++;
       }
     }
   }
 
   @Override
+  @SuppressWarnings("deprecation") // We assert that all valid headers are ascii
   public String toString() {
     StringBuilder sb = new StringBuilder("Metadata(");
     for (int i = 0; i < size; i++) {
