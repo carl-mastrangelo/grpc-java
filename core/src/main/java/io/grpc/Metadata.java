@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -130,57 +131,53 @@ public final class Metadata {
     }
   };
 
-  /** All value lists can be added to. No value list may be empty. */
-  // Use LinkedHashMap for consistent ordering for tests.
-  private final Map<String, List<MetadataEntry>> store =
-      new LinkedHashMap<String, List<MetadataEntry>>();
-
-  /** The number of headers stored by this metadata.  */
-  private int storeCount;
-
   /**
    * Constructor called by the transport layer when it receives binary metadata.
    */
   // TODO(louiscryan): Convert to use ByteString so we can cache transformations
   @Internal
   public Metadata(byte[]... binaryValues) {
-    checkArgument(binaryValues.length % 2 == 0,
+    checkArgument((binaryValues.length & 1) == 0,
         "Odd number of key-value pairs: %s", binaryValues.length);
+    size = binaryValues.length / 2;
+    names = new byte[size][];
+    values = new byte[size][];
+    typedValues = new Object[size][];
+
     for (int i = 0; i < binaryValues.length; i += 2) {
-      String name = new String(binaryValues[i], US_ASCII);
-      storeAdd(name, new MetadataEntry(name.endsWith(BINARY_HEADER_SUFFIX), binaryValues[i + 1]));
+      names[i/2] = binaryValues[i];
+      values[i/2] = binaryValues[i + 1];
     }
   }
+
+  private byte[][] names;
+  private byte[][] values;
+  private Object[] typedValues;
+  private int size;
 
   /**
    * Constructor called by the application layer when it wants to send metadata.
    */
   public Metadata() {}
 
-  private void storeAdd(String name, MetadataEntry value) {
-    List<MetadataEntry> values = store.get(name);
-    if (values == null) {
-      // We expect there to be usually unique header values, so prefer smaller arrays.
-      values = new ArrayList<MetadataEntry>(1);
-      store.put(name, values);
-    }
-    storeCount++;
-    values.add(value);
-  }
-
   /**
    * Returns the total number of key-value headers in this metadata, including duplicates.
    */
   @Internal
   public int headerCount() {
-    return storeCount;
+    return size;
   }
 
   /**
    * Returns true if a value is defined for the given key.
    */
   public boolean containsKey(Key<?> key) {
-    return store.containsKey(key.name());
+    for (int i = 0; i < size; i++) {
+      if (key.asciiName() == names[i]) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -188,12 +185,16 @@ public final class Metadata {
    * @return the parsed metadata entry or null if there are none.
    */
   public <T> T get(Key<T> key) {
-    List<MetadataEntry> values = store.get(key.name());
-    if (values == null) {
-      return null;
+    for (int i = 0; i < size; i++) {
+      if (key.asciiName() == names[i]) {
+        if (typedValues[i] == null) {
+          typedValues[i] = key.parseBytes(values[i]);
+        }
+        // take THAT typesafety!
+        return (T) typedValues[i];
+      }
     }
-    MetadataEntry metadataEntry = values.get(values.size() - 1);
-    return metadataEntry.getParsed(key);
+    return null;
   }
 
   /**
@@ -201,12 +202,37 @@ public final class Metadata {
    * parsed as T or null if there are none. The iterator is not guaranteed to be "live." It may or
    * may not be accurate if Metadata is mutated.
    */
-  public <T> Iterable<T> getAll(Key<T> key) {
-    if (containsKey(key)) {
-      /* This is unmodifiable currently, but could be made to support remove() in the future.  If
-       * removal support is added, the {@link #storeCount} variable needs to be updated
-       * appropriately. */
-      return new ValueIterable<T>(key, store.get(key.name()));
+  public <T> Iterable<T> getAll(final Key<T> key) {
+    for (int i = 0; i < size; i++) {
+      if (names[i] == key.asciiName()) {
+        final int k = i;
+        return new Iterable<T>() {
+          @Override
+          public Iterator<T> iterator() {
+            return new Iterator<T>() {
+              int m = k;
+              @Override
+              public boolean hasNext() {
+                return m < size;
+              }
+
+              @Override
+              public T next() {
+                if (typedValues[m] == null) {
+                  typedValues[m] = key.parseBytes(values[m]);
+                }
+                T ret = (T) typedValues[m++];
+                for (; m < size; m++) {
+                  if (names[m] == key.asciiName()) {
+                    break;
+                  }
+                }
+                return ret;
+              }
+            };
+          }
+        };
+      }
     }
     return null;
   }
@@ -216,8 +242,17 @@ public final class Metadata {
    *
    * @return unmodifiable Set of keys
    */
+  @SuppressWarnings("deprecation") // The String ctor is deprecated, but fast.
   public Set<String> keys() {
-    return Collections.unmodifiableSet(store.keySet());
+    if (size == 0) {
+      return Collections.emptySet();
+    }
+    Set<String> ks = new HashSet<String>(size);
+    for (int i = 0; i < size; i++) {
+      ks.add(new String(names[i], 0 /* hibyte */));
+    }
+    // immutable in case we decide to change the implementation later.
+    return Collections.unmodifiableSet(ks);
   }
 
   /**
@@ -229,7 +264,26 @@ public final class Metadata {
   public <T> void put(Key<T> key, T value) {
     Preconditions.checkNotNull(key, "key");
     Preconditions.checkNotNull(value, "value");
-    storeAdd(key.name, new MetadataEntry(key, value));
+    if (size == names.length) {
+      expand(Math.max(2, size + size >>> 2));
+    }
+    names[size] = key.asciiName();
+    values[size] = key.toBytes(value);
+    typedValues[size] = value;
+    size++;
+  }
+
+  private void expand(int newCapacity) {
+    if (names != null)
+    byte[][] newNames = new byte[newCapacity][];
+    System.arraycopy(names, 0, newNames, 0, size);
+    names = newNames;
+    byte[][] newValues = new byte[newCapacity][];
+    System.arraycopy(values, 0, newValues, 0, size);
+    values = newValues;
+    Object[] newTypedValues = new Object[newCapacity][];
+    System.arraycopy(names, 0, newNames, 0, size);
+    typedValues = newTypedValues;
   }
 
   /**
@@ -241,6 +295,7 @@ public final class Metadata {
    * @throws NullPointerException if {@code key} or {@code value} is null
    */
   public <T> boolean remove(Key<T> key, T value) {
+
     Preconditions.checkNotNull(key, "key");
     Preconditions.checkNotNull(value, "value");
     List<MetadataEntry> values = store.get(key.name());
@@ -337,11 +392,18 @@ public final class Metadata {
 
   @Override
   public String toString() {
-    return "Metadata(" + toStringInternal() + ")";
-  }
-
-  private String toStringInternal() {
-    return store.toString();
+    StringBuilder sb = new StringBuilder("Metadata(");
+    for (int i = 0; i < size; i++) {
+      if (i != 0) {
+        sb.append(',');
+      }
+      sb.append(new String(names[i], 0)).append('=');
+      if (typedValues[i] != null) {
+        sb.append(typedValues[i]);
+      }
+      sb.append(Arrays.toString(values[i]));
+    }
+    return sb.append(')').toString();
   }
 
   /**
@@ -602,114 +664,6 @@ public final class Metadata {
     @Override
     T parseBytes(byte[] serialized) {
       return marshaller.parseAsciiString(new String(serialized, US_ASCII));
-    }
-  }
-
-  private static class MetadataEntry {
-    Object parsed;
-
-    @SuppressWarnings("rawtypes")
-    Key key;
-    boolean isBinary;
-    byte[] serializedBinary;
-
-    /**
-     * Constructor used when application layer adds a parsed value.
-     */
-    private MetadataEntry(Key<?> key, Object parsed) {
-      this.parsed = Preconditions.checkNotNull(parsed, "parsed");
-      this.key = Preconditions.checkNotNull(key, "key");
-      this.isBinary = key instanceof BinaryKey;
-    }
-
-    /**
-     * Constructor used when reading a value from the transport.
-     */
-    private MetadataEntry(boolean isBinary, byte[] serialized) {
-      Preconditions.checkNotNull(serialized, "serialized");
-      this.serializedBinary = serialized;
-      this.isBinary = isBinary;
-    }
-
-    /**
-     * Copy constructor.
-     */
-    private MetadataEntry(MetadataEntry entry) {
-      this.parsed = entry.parsed;
-      this.key = entry.key;
-      this.isBinary = entry.isBinary;
-      this.serializedBinary = entry.serializedBinary;
-    }
-
-    @SuppressWarnings("unchecked")
-    public <T> T getParsed(Key<T> key) {
-      T value = (T) parsed;
-      if (value != null) {
-        if (this.key != key) {
-          // Keys don't match so serialize using the old key
-          serializedBinary = this.key.toBytes(value);
-        } else {
-          return value;
-        }
-      }
-      this.key = key;
-      if (serializedBinary != null) {
-        value = key.parseBytes(serializedBinary);
-      }
-      parsed = value;
-      return value;
-    }
-
-    @SuppressWarnings("unchecked")
-    public byte[] getSerialized() {
-      return serializedBinary =
-          serializedBinary == null
-              ? key.toBytes(parsed) : serializedBinary;
-    }
-
-    @Override
-    public String toString() {
-      if (!isBinary) {
-        return new String(getSerialized(), US_ASCII);
-      } else {
-        // Assume that the toString of an Object is better than a binary encoding.
-        if (parsed != null) {
-          return "" + parsed;
-        } else {
-          return Arrays.toString(serializedBinary);
-        }
-      }
-    }
-  }
-
-  private static class ValueIterable<T> implements Iterable<T> {
-    private final Key<T> key;
-    private final Iterable<MetadataEntry> entries;
-
-    public ValueIterable(Key<T> key, Iterable<MetadataEntry> entries) {
-      this.key = key;
-      this.entries = entries;
-    }
-
-    @Override
-    public Iterator<T> iterator() {
-      final Iterator<MetadataEntry> iterator = entries.iterator();
-      class ValueIterator implements Iterator<T> {
-        @Override public boolean hasNext() {
-          return iterator.hasNext();
-        }
-
-        @Override public T next() {
-          return iterator.next().getParsed(key);
-        }
-
-        @Override public void remove() {
-          // Not implemented to not need to conditionally update {@link #storeCount}.
-          throw new UnsupportedOperationException();
-        }
-      }
-
-      return new ValueIterator();
     }
   }
 }
