@@ -231,15 +231,15 @@ public class MetadataTest {
     Metadata h = new Metadata();
     h.put(KEY, new Fish("binary"));
     h.put(Metadata.Key.of("test", Metadata.ASCII_STRING_MARSHALLER), "ascii");
-    assertEquals("Metadata({test-bin=[Fish(binary)], test=[ascii]})", h.toString());
+    assertEquals("Metadata(test-bin=Fish(binary),test=ascii)", h.toString());
 
     Metadata t = new Metadata();
     t.put(Metadata.Key.of("test", Metadata.ASCII_STRING_MARSHALLER), "ascii");
-    assertEquals("Metadata({test=[ascii]})", t.toString());
+    assertEquals("Metadata(test=ascii)", t.toString());
 
     t = new Metadata("test".getBytes(US_ASCII), "ascii".getBytes(US_ASCII),
         "test-bin".getBytes(US_ASCII), "binary".getBytes(US_ASCII));
-    assertEquals("Metadata({test=[ascii], test-bin=[[98, 105, 110, 97, 114, 121]]})", t.toString());
+    assertEquals("Metadata(test=ascii,test-bin=binary)", t.toString());
   }
 
   @Test

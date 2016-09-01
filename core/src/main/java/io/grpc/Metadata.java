@@ -38,13 +38,13 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -142,7 +142,7 @@ public final class Metadata {
     size = binaryValues.length / 2;
     names = new byte[size][];
     values = new byte[size][];
-    typedValues = new Object[size][];
+    typedValues = new Object[size];
 
     for (int i = 0; i < binaryValues.length; i += 2) {
       names[i/2] = binaryValues[i];
@@ -185,7 +185,7 @@ public final class Metadata {
    * @return the parsed metadata entry or null if there are none.
    */
   public <T> T get(Key<T> key) {
-    for (int i = 0; i < size; i++) {
+    for (int i = size - 1; i >= 0; i++) {
       if (key.asciiName() == names[i]) {
         if (typedValues[i] == null) {
           typedValues[i] = key.parseBytes(values[i]);
@@ -264,8 +264,8 @@ public final class Metadata {
   public <T> void put(Key<T> key, T value) {
     Preconditions.checkNotNull(key, "key");
     Preconditions.checkNotNull(value, "value");
-    if (size == names.length) {
-      expand(Math.max(2, size + size >>> 2));
+    if (size == 0 || size == names.length) {
+      expand(Math.max(2, size + (size >>> 1)));
     }
     names[size] = key.asciiName();
     values[size] = key.toBytes(value);
@@ -274,15 +274,16 @@ public final class Metadata {
   }
 
   private void expand(int newCapacity) {
-    if (names != null)
     byte[][] newNames = new byte[newCapacity][];
-    System.arraycopy(names, 0, newNames, 0, size);
-    names = newNames;
     byte[][] newValues = new byte[newCapacity][];
-    System.arraycopy(values, 0, newValues, 0, size);
+    Object[] newTypedValues = new Object[newCapacity];
+    if (size != 0) {
+      System.arraycopy(names, 0, newNames, 0, size);
+      System.arraycopy(values, 0, newValues, 0, size);
+      System.arraycopy(names, 0, newNames, 0, size);
+    }
+    names = newNames;
     values = newValues;
-    Object[] newTypedValues = new Object[newCapacity][];
-    System.arraycopy(names, 0, newNames, 0, size);
     typedValues = newTypedValues;
   }
 
@@ -295,21 +296,25 @@ public final class Metadata {
    * @throws NullPointerException if {@code key} or {@code value} is null
    */
   public <T> boolean remove(Key<T> key, T value) {
-
     Preconditions.checkNotNull(key, "key");
     Preconditions.checkNotNull(value, "value");
-    List<MetadataEntry> values = store.get(key.name());
-    if (values == null) {
-      return false;
-    }
-    for (int i = 0; i < values.size(); i++) {
-      MetadataEntry entry = values.get(i);
-      if (!value.equals(entry.getParsed(key))) {
-        continue;
+    for (int i = 0; i < size; i++) {
+      if (names[i] == key.asciiName()) {
+        T stored = typedValues[i] != null ? (T) typedValues[i] : key.parseBytes(values[i]);
+        if (!value.equals(stored)) {
+          continue;
+        }
+        for (int k = i; k < size - 1; k++) {
+          names[k] = names[k + 1];
+          values[k] = values[k + 1];
+          typedValues[k] = typedValues[k + 1];
+        }
+        size -= 1;
+        names[size] = null;
+        values[size] = null;
+        typedValues[size] = null;
+        return true;
       }
-      values.remove(i);
-      storeCount--;
-      return true;
     }
     return false;
   }
@@ -318,12 +323,28 @@ public final class Metadata {
    * Remove all values for the given key. If there were no values, {@code null} is returned.
    */
   public <T> Iterable<T> removeAll(Key<T> key) {
-    List<MetadataEntry> values = store.remove(key.name());
-    if (values == null) {
-      return null;
+    int wi = 0;
+    int ri = 0;
+    List<T> ret = null;
+    for (; ri < size; ri++) {
+      if (names[ri] == key.asciiName()) {
+        ret = ret != null ? ret : new LinkedList<T>();
+        ret.add(typedValues[ri] != null ? (T) typedValues[ri] : key.parseBytes(values[ri]));
+        continue;
+      }
+      names[wi] = names[ri];
+      values[wi] = values[ri];
+      typedValues[wi] = values[ri];
+      wi++;
     }
-    storeCount -= values.size();
-    return new ValueIterable<T>(key, values);
+    int newSize = wi;
+    for (; wi < size; wi++) {
+      names[wi] = null;
+      values[wi] = null;
+      typedValues[wi] = null;
+    }
+    size = newSize;
+    return ret;
   }
 
   /**
@@ -344,16 +365,10 @@ public final class Metadata {
   @Internal
   public byte[][] serialize() {
     // 2x for keys + values
-    byte[][] serialized = new byte[storeCount * 2][];
-    int i = 0;
-    for (Map.Entry<String, List<MetadataEntry>> storeEntry : store.entrySet()) {
-      // Foreach allocates an iterator per.
-      List<MetadataEntry> values = storeEntry.getValue();
-      for (int k = 0; k < values.size(); k++) {
-        serialized[i++] = values.get(k).key != null
-            ? values.get(k).key.asciiName() : storeEntry.getKey().getBytes(US_ASCII);
-        serialized[i++] = values.get(k).getSerialized();
-      }
+    byte[][] serialized = new byte[size * 2][];
+    for (int i = 0; i < size; i++) {
+      serialized[i*2] = names[i];
+      serialized[i*2 + 1] = values[i];
     }
     return serialized;
   }
@@ -362,14 +377,17 @@ public final class Metadata {
    * Perform a simple merge of two sets of metadata.
    */
   public void merge(Metadata other) {
-    Preconditions.checkNotNull(other, "other");
-    for (Map.Entry<String, List<MetadataEntry>> keyEntry : other.store.entrySet()) {
-      for (int i = 0; i < keyEntry.getValue().size(); i++) {
-        // Must copy the MetadataEntries since they are mutated. If the two Metadata objects are
-        // used from different threads it would cause thread-safety issues.
-        storeAdd(keyEntry.getKey(), new MetadataEntry(keyEntry.getValue().get(i)));
-      }
+    if (other.size == 0) {
+      return;
     }
+    int remaining = 0;
+    if (size == 0 || (remaining = names.length - size) < other.size) {
+      expand(size + other.size - remaining);
+    }
+    System.arraycopy(other.names, 0, names, size, other.size);
+    System.arraycopy(other.values, 0, values, size, other.size);
+    System.arraycopy(other.typedValues, 0, typedValues, size, other.size);
+    size += other.size;
   }
 
   /**
@@ -377,15 +395,20 @@ public final class Metadata {
    */
   public void merge(Metadata other, Set<Key<?>> keys) {
     Preconditions.checkNotNull(other, "other");
+    Map<byte[], Key<?>> asciiKeys = new IdentityHashMap<byte[], Key<?>>(keys.size());
     for (Key<?> key : keys) {
-      List<MetadataEntry> values = other.store.get(key.name());
-      if (values == null) {
-        continue;
-      }
-      for (int i = 0; i < values.size(); i++) {
-        // Must copy the MetadataEntries since they are mutated. If the two Metadata objects are
-        // used from different threads it would cause thread-safety issues.
-        storeAdd(key.name(), new MetadataEntry(values.get(i)));
+      asciiKeys.put(key.asciiName(), key);
+    }
+    for (int i = 0; i < other.size; i++) {
+      if (asciiKeys.containsKey(other.names[i])) {
+        if (size == 0 || size == names.length) {
+          expand(size + (size >>> 1));
+        }
+        names[size] = other.names[i];
+        values[size] = other.values[i];
+        typedValues[size] = other.typedValues[i] != null ?
+            other.typedValues[i] : asciiKeys.get(other.names[i]).parseBytes(other.values[i]);
+        size++;
       }
     }
   }
@@ -400,8 +423,9 @@ public final class Metadata {
       sb.append(new String(names[i], 0)).append('=');
       if (typedValues[i] != null) {
         sb.append(typedValues[i]);
+      } else {
+        sb.append(new String(values[i], 0));
       }
-      sb.append(Arrays.toString(values[i]));
     }
     return sb.append(')').toString();
   }
@@ -544,11 +568,16 @@ public final class Metadata {
       return n;
     }
 
+    private static final Map<String, byte[]> asciiMap = new HashMap<String, byte[]>();
+
     private Key(String name) {
       this.originalName = checkNotNull(name, "name");
       // Intern the result for faster string identity checking.
       this.name = validateName(this.originalName.toLowerCase(Locale.ROOT)).intern();
-      this.nameBytes = this.name.getBytes(US_ASCII);
+      if (!asciiMap.containsKey(this.name)) {
+        asciiMap.put(this.name, this.name.getBytes(US_ASCII));
+      }
+      this.nameBytes = asciiMap.get(this.name);
     }
 
     /**
