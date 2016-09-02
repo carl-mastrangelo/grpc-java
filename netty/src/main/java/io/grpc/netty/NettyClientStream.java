@@ -49,10 +49,10 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2Stream;
 import io.netty.util.AsciiString;
+import io.netty.util.concurrent.FastThreadLocal;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
@@ -61,6 +61,9 @@ import javax.annotation.Nullable;
  */
 abstract class NettyClientStream extends Http2ClientStream implements StreamIdHolder {
 
+  private static final FastThreadLocal<Map<MethodDescriptor<?, ?>, AsciiString>> methodPathCache =
+      new FastThreadLocal<Map<MethodDescriptor<?, ?>, AsciiString>>();
+/*
   private static final ThreadLocal<Map<MethodDescriptor<?, ?>, AsciiString>> methodPathCache =
       ThreadLocal.withInitial(new Supplier<Map<MethodDescriptor<?, ?>, AsciiString>>() {
         @Override
@@ -68,7 +71,7 @@ abstract class NettyClientStream extends Http2ClientStream implements StreamIdHo
           return new IdentityHashMap<MethodDescriptor<?,?>, AsciiString>();
         }
       });
-
+*/
   private final MethodDescriptor<?, ?> method;
   /** {@code null} after start. */
   private Metadata headers;
@@ -94,6 +97,9 @@ abstract class NettyClientStream extends Http2ClientStream implements StreamIdHo
     this.authority = checkNotNull(authority, "authority");
     this.scheme = checkNotNull(scheme, "scheme");
     this.userAgent = userAgent;
+    if (!methodPathCache.isSet()) {
+      methodPathCache.set(new IdentityHashMap<MethodDescriptor<?,?>, AsciiString>());
+    }
   }
 
   @Override
