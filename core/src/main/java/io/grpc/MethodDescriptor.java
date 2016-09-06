@@ -35,9 +35,6 @@ import com.google.common.base.Preconditions;
 
 import java.io.InputStream;
 import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
@@ -277,8 +274,9 @@ public class MethodDescriptor<ReqT, RespT> {
   public static final class InternalAccessor {
     private static final String PACKAGE = InternalAccessor.class.getPackage().getName();
 
-    private static final Set<String> PACKAGE_WHITELIST =
-        new HashSet<String>(Arrays.asList(PACKAGE + ".netty."));
+    private static final String[] PACKAGE_WHITELIST = new String[] {
+        PACKAGE + ".netty.",
+    };
 
     /**
      * Only packages on the whitelist may access this.
