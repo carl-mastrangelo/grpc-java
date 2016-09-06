@@ -34,6 +34,10 @@ package io.grpc;
 import com.google.common.base.Preconditions;
 
 import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
@@ -51,6 +55,7 @@ public class MethodDescriptor<ReqT, RespT> {
 
   private final MethodType type;
   private final String fullMethodName;
+  private final byte[] rawPath;
   private final Marshaller<ReqT> requestMarshaller;
   private final Marshaller<RespT> responseMarshaller;
   private final boolean idempotent;
@@ -152,15 +157,17 @@ public class MethodDescriptor<ReqT, RespT> {
         type, fullMethodName, requestMarshaller, responseMarshaller, false);
   }
 
-  private MethodDescriptor(MethodType type, String fullMethodName,
-                           Marshaller<ReqT> requestMarshaller,
-                           Marshaller<RespT> responseMarshaller,
-                           boolean idempotent) {
+  private MethodDescriptor(
+      MethodType type, String fullMethodName,
+       Marshaller<ReqT> requestMarshaller,
+       Marshaller<RespT> responseMarshaller,
+       boolean idempotent) {
     this.type = Preconditions.checkNotNull(type, "type");
     this.fullMethodName = Preconditions.checkNotNull(fullMethodName, "fullMethodName");
     this.requestMarshaller = Preconditions.checkNotNull(requestMarshaller, "requestMarshaller");
     this.responseMarshaller = Preconditions.checkNotNull(responseMarshaller, "responseMarshaller");
     this.idempotent = idempotent;
+    this.rawPath = ("/" + fullMethodName).getBytes(Charset.forName("US-ASCII"));
   }
 
   /**
@@ -261,5 +268,41 @@ public class MethodDescriptor<ReqT, RespT> {
       return null;
     }
     return fullMethodName.substring(0, index);
+  }
+
+  /**
+   * An internal only class for passing information directly into the transport.
+   */
+  @Internal
+  public static final class InternalAccessor {
+    private static final String PACKAGE = InternalAccessor.class.getPackage().getName();
+
+    private static final Set<String> PACKAGE_WHITELIST =
+        new HashSet<String>(Arrays.asList(PACKAGE + ".netty."));
+
+    /**
+     * Only packages on the whitelist may access this.
+     */
+    @Internal
+    public InternalAccessor() {
+      StackTraceElement[] st = new Throwable().getStackTrace();
+      if (st.length >= 2) {
+        String caller = st[1].getClassName();
+        for (String pkg : PACKAGE_WHITELIST) {
+          if (caller.startsWith(pkg)) {
+            return;
+          }
+        }
+      }
+      throw new UnsupportedOperationException("gRPC internal usage only");
+    }
+
+    /**
+     * Returns the raw bytes that represent the path.  Do not modify.
+     */
+    @Internal
+    public byte[] getRawPath(MethodDescriptor<?, ?> md) {
+      return md.rawPath;
+    }
   }
 }

@@ -50,10 +50,6 @@ import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2Stream;
 import io.netty.util.AsciiString;
 
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.function.Supplier;
-
 import javax.annotation.Nullable;
 
 /**
@@ -61,13 +57,8 @@ import javax.annotation.Nullable;
  */
 abstract class NettyClientStream extends Http2ClientStream implements StreamIdHolder {
 
-  private static final ThreadLocal<Map<MethodDescriptor<?, ?>, AsciiString>> methodPathCache =
-      ThreadLocal.withInitial(new Supplier<Map<MethodDescriptor<?, ?>, AsciiString>>() {
-        @Override
-        public Map<MethodDescriptor<?, ?>, AsciiString> get() {
-          return new IdentityHashMap<MethodDescriptor<?,?>, AsciiString>();
-        }
-      });
+  private static final MethodDescriptor.InternalAccessor methodDescriptorAccessor =
+      new MethodDescriptor.InternalAccessor();
 
   private final MethodDescriptor<?, ?> method;
   /** {@code null} after start. */
@@ -107,11 +98,7 @@ abstract class NettyClientStream extends Http2ClientStream implements StreamIdHo
     super.start(listener);
 
     // Convert the headers into Netty HTTP/2 headers.
-    AsciiString defaultPath;
-    if ((defaultPath = methodPathCache.get().get(method)) == null) {
-      methodPathCache.get().put(method,
-          (defaultPath = new AsciiString("/" + method.getFullMethodName())));
-    }
+    AsciiString defaultPath = new AsciiString(methodDescriptorAccessor.getRawPath(method), false);
     headers.removeAll(GrpcUtil.USER_AGENT_KEY);
     Http2Headers http2Headers
         = Utils.convertClientHeaders(headers, scheme, defaultPath, authority, userAgent);
