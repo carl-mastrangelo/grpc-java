@@ -34,6 +34,7 @@ package io.grpc;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 
 import java.util.Collections;
@@ -68,7 +69,7 @@ public final class DecompressorRegistry {
   }
 
   private final Map<String, DecompressorInfo> decompressors;
-  private final String advertisedDecompressors;
+  private final byte[] advertisedDecompressors;
 
   /**
    * Registers a decompressor for both decompression and message encoding negotiation.  Returns a
@@ -82,8 +83,15 @@ public final class DecompressorRegistry {
   }
 
   private DecompressorRegistry(Decompressor d, boolean advertised, DecompressorRegistry parent) {
-    String encoding = d.getMessageEncoding();
-    checkArgument(!encoding.contains(","), "Comma is currently not allowed in message encoding");
+    String encoding = checkNotNull(d.getMessageEncoding(), "message encoding");
+    checkArgument(!encoding.isEmpty(), "empty message encoding");
+    for (int i = 0; i < encoding.length(); i++) {
+      char c = encoding.charAt(i);
+      checkArgument(c >= ' ' && c <= '~', "Invalid character: " + c);
+      checkArgument(c != ',', "Comma is currently not allowed in message encoding");
+    }
+    checkArgument(
+        encoding.length() == encoding.trim().length(), "Leading/trailing whitespace not allowed");
 
     int newSize = parent.decompressors.size();
     if (!parent.decompressors.containsKey(d.getMessageEncoding())) {
@@ -101,12 +109,13 @@ public final class DecompressorRegistry {
     newDecompressors.put(encoding, new DecompressorInfo(d, advertised));
 
     decompressors = Collections.unmodifiableMap(newDecompressors);
-    advertisedDecompressors = ACCEPT_ENCODING_JOINER.join(getAdvertisedMessageEncodings());
+    advertisedDecompressors =
+        ACCEPT_ENCODING_JOINER.join(getAdvertisedMessageEncodings()).getBytes(Charsets.US_ASCII);
   }
 
   private DecompressorRegistry() {
     decompressors = new LinkedHashMap<String, DecompressorInfo>(0);
-    advertisedDecompressors = "";
+    advertisedDecompressors = new byte[]{};
   }
 
   /**
@@ -116,7 +125,8 @@ public final class DecompressorRegistry {
     return decompressors.keySet();
   }
 
-  public String getRawAdvertisedMessageEncodings() {
+
+  byte[] getRawAdvertisedMessageEncodings() {
     return advertisedDecompressors;
   }
 

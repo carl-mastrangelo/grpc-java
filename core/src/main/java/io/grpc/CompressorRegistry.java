@@ -32,9 +32,9 @@
 package io.grpc;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.VisibleForTesting;
-
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -80,9 +80,17 @@ public final class CompressorRegistry {
    *
    * @param c The compressor to register
    */
-  public void register(Compressor c) {
-    String encoding = c.getMessageEncoding();
+  public void register(Compressor compressor) {
+    String encoding = checkNotNull(compressor.getMessageEncoding(), "message encoding");
+    checkArgument(!encoding.isEmpty(), "empty message encoding");
+    for (int i = 0; i < encoding.length(); i++) {
+      char c = encoding.charAt(i);
+      checkArgument(c >= ' ' && c <= '~', "Invalid character: " + c);
+      checkArgument(c != ',', "Comma is currently not allowed in message encoding");
+    }
+    checkArgument(
+        encoding.length() == encoding.trim().length(), "Leading/trailing whitespace not allowed");
     checkArgument(!encoding.contains(","), "Comma is currently not allowed in message encoding");
-    compressors.put(encoding, c);
+    compressors.put(encoding, compressor);
   }
 }

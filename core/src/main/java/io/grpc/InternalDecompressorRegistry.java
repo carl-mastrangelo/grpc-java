@@ -1,5 +1,5 @@
 /*
- * Copyright 2015, Google Inc. All rights reserved.
+ * Copyright 2016, Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -31,27 +31,18 @@
 
 package io.grpc;
 
-import java.io.IOException;
-import java.io.InputStream;
-
 /**
- * Represents a message decompressor.
+ * Accesses internal data.  Do not use this.
  */
-@ExperimentalApi("https://github.com/grpc/grpc-java/issues/1704")
-public interface Decompressor {
-  /**
-   * Returns the message encoding that this compressor uses.
-   *
-   * <p>This can be values such as "gzip", "deflate", "snappy", etc.  It MUST conform to headers
-   * rules per RFC 7230 Section 3.2  (ASCII only visible characters)
-   */
-  String getMessageEncoding();
+@Internal
+public final class InternalDecompressorRegistry {
 
   /**
-   * Wraps an existing input stream with a decompressing input stream.
-   * @param is The input stream of uncompressed data
-   * @return An input stream that decompresses
+   * Accessor for {@link DecompressorRegistry#getRawAdvertisedMessageEncodings}.
    */
-  InputStream decompress(InputStream is) throws IOException;
+  @Internal
+  public static byte[] getRawAdvertisedMessageEncodings(DecompressorRegistry dr) {
+    return dr.getRawAdvertisedMessageEncodings();
+  }
 }
 

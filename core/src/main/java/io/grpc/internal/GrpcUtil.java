@@ -41,6 +41,7 @@ import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
+import io.grpc.InternalMetadata;
 import io.grpc.Metadata;
 import io.grpc.Status;
 import io.grpc.internal.SharedResourceHolder.Resource;
@@ -83,8 +84,19 @@ public final class GrpcUtil {
   /**
    * {@link io.grpc.Metadata.Key} for the accepted message encodings header.
    */
-  public static final Metadata.Key<String> MESSAGE_ACCEPT_ENCODING_KEY =
-          Metadata.Key.of(GrpcUtil.MESSAGE_ACCEPT_ENCODING, Metadata.ASCII_STRING_MARSHALLER);
+  public static final Metadata.Key<byte[]> MESSAGE_ACCEPT_ENCODING_KEY = InternalMetadata.keyOf(
+      GrpcUtil.MESSAGE_ACCEPT_ENCODING, new InternalMetadata.TrustedAsciiMarshaller<byte[]>() {
+
+            @Override
+            public byte[] toAsciiString(byte[] value) {
+              return value;
+            }
+
+            @Override
+            public byte[] parseAsciiString(byte[] serialized) {
+              return serialized;
+            }
+          });
 
   /**
    * {@link io.grpc.Metadata.Key} for the Content-Type request/response header.
