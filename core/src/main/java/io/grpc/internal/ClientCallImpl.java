@@ -36,6 +36,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.grpc.Contexts.statusFromCancelled;
+import static io.grpc.InternalDecompressorRegistry.getRawAdvertisedMessageEncodings;
 import static io.grpc.Status.DEADLINE_EXCEEDED;
 import static io.grpc.internal.GrpcUtil.MESSAGE_ACCEPT_ENCODING_KEY;
 import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
@@ -146,8 +147,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
     }
 
     headers.discardAll(MESSAGE_ACCEPT_ENCODING_KEY);
-    String advertisedEncodings = decompressorRegistry.getRawAdvertisedMessageEncodings();
-    if (!advertisedEncodings.isEmpty()) {
+    byte[] advertisedEncodings = getRawAdvertisedMessageEncodings(decompressorRegistry);
+    if (advertisedEncodings.length != 0) {
       headers.put(MESSAGE_ACCEPT_ENCODING_KEY, advertisedEncodings);
     }
   }

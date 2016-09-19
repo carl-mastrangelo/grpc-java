@@ -35,7 +35,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -78,8 +77,19 @@ public final class GrpcUtil {
   /**
    * {@link io.grpc.Metadata.Key} for the message encoding header.
    */
-  public static final Metadata.Key<String> MESSAGE_ENCODING_KEY =
-          Metadata.Key.of(GrpcUtil.MESSAGE_ENCODING, Metadata.ASCII_STRING_MARSHALLER);
+  public static final Metadata.Key<byte[]> MESSAGE_ENCODING_KEY = InternalMetadata.keyOf(
+      GrpcUtil.MESSAGE_ENCODING,  new InternalMetadata.TrustedAsciiMarshaller<byte[]>() {
+
+          @Override
+          public byte[] toAsciiString(byte[] value) {
+            return value;
+          }
+
+          @Override
+          public byte[] parseAsciiString(byte[] serialized) {
+            return serialized;
+          }
+        });
 
   /**
    * {@link io.grpc.Metadata.Key} for the accepted message encodings header.
@@ -159,8 +169,6 @@ public final class GrpcUtil {
    * The default maximum size (in bytes) for inbound header/trailer.
    */
   public static final int DEFAULT_MAX_HEADER_LIST_SIZE = 8192;
-
-  public static final Splitter ACCEPT_ENCODING_SPLITER = Splitter.on(',').trimResults();
 
   private static final String IMPLEMENTATION_VERION = getImplementationVersion();
 

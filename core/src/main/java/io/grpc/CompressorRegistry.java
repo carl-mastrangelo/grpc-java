@@ -35,9 +35,10 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Charsets;
 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
@@ -46,6 +47,7 @@ import javax.annotation.concurrent.ThreadSafe;
  * Encloses classes related to the compression and decompression of messages.
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1704")
+// TODO(carl-mastrangelo): make this not not thread safe.
 @ThreadSafe
 public final class CompressorRegistry {
   private static final CompressorRegistry DEFAULT_INSTANCE = new CompressorRegistry(
@@ -60,25 +62,38 @@ public final class CompressorRegistry {
     return new CompressorRegistry();
   }
 
-  private final ConcurrentMap<String, Compressor> compressors;
+  private final AtomicReference<CompressorInfo[]> compressors =
+      new AtomicReference<CompressorInfo[]>();
 
   @VisibleForTesting
   CompressorRegistry(Compressor ...cs) {
-    compressors = new ConcurrentHashMap<String, Compressor>();
-    for (Compressor c : cs) {
-      compressors.put(c.getMessageEncoding(), c);
+    CompressorInfo[] compressorsInfos = new CompressorInfo[cs.length];
+    for (int i = 0; i < cs.length; i++) {
+      compressorsInfos[i] = new CompressorInfo(cs[i]);
     }
+    compressors.set(compressorsInfos);
   }
 
   @Nullable
   public Compressor lookupCompressor(String compressorName) {
-    return compressors.get(compressorName);
+    CompressorInfo ci = lookupCompressorInfo(compressorName);
+    return ci != null ? ci.compressor : null;
+  }
+
+  CompressorInfo lookupCompressorInfo(String compressorName) {
+    CompressorInfo[] cs = compressors.get();
+    for (CompressorInfo ci : cs) {
+      if (ci.compressor.getMessageEncoding().equals(compressorName)) {
+        return ci;
+      }
+    }
+    return null;
   }
 
   /**
    * Registers a compressor for both decompression and message encoding negotiation.
    *
-   * @param c The compressor to register
+   * @param compressor The compressor to register
    */
   public void register(Compressor compressor) {
     String encoding = checkNotNull(compressor.getMessageEncoding(), "message encoding");
@@ -91,6 +106,43 @@ public final class CompressorRegistry {
     checkArgument(
         encoding.length() == encoding.trim().length(), "Leading/trailing whitespace not allowed");
     checkArgument(!encoding.contains(","), "Comma is currently not allowed in message encoding");
-    compressors.put(encoding, compressor);
+
+    // None of this would be necessary if this wasn't @ThreadSafe.
+    CompressorInfo[] oldCs;
+    CompressorInfo[] newCs;
+    do {
+      oldCs = compressors.get();
+      newCs = null;
+      for (int i = 0; i < oldCs.length; i++) {
+        if (oldCs[i].compressor.getMessageEncoding().equals(encoding)) {
+          newCs = Arrays.copyOf(oldCs, oldCs.length);
+          newCs[i] = new CompressorInfo(compressor);
+          break;
+        }
+      }
+      if (newCs == null) {
+        newCs = Arrays.copyOf(oldCs, oldCs.length + 1);
+        newCs[oldCs.length] = new CompressorInfo(compressor);
+      }
+
+    } while(!compressors.compareAndSet(oldCs, newCs));
+  }
+
+  final static class CompressorInfo {
+    private final Compressor compressor;
+    private final byte[] rawEncoding;
+
+    private CompressorInfo(Compressor compressor) {
+      this.compressor = compressor;
+      this.rawEncoding = compressor.getMessageEncoding().getBytes(Charsets.US_ASCII);
+    }
+
+    Compressor getCompressor() {
+      return compressor;
+    }
+
+    byte[] getRawEncoding() {
+      return rawEncoding;
+    }
   }
 }

@@ -264,7 +264,7 @@ public class ClientCallImplTest {
     verify(transport).newStream(eq(method), metadataCaptor.capture(), same(CallOptions.DEFAULT));
     Metadata actual = metadataCaptor.getValue();
 
-    Set<String> acceptedEncodings =
+    Set<byte[]> acceptedEncodings =
         ImmutableSet.copyOf(actual.getAll(GrpcUtil.MESSAGE_ACCEPT_ENCODING_KEY));
     assertEquals(decompressorRegistry.getAdvertisedMessageEncodings(), acceptedEncodings);
   }

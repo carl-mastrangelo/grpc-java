@@ -34,12 +34,14 @@ package io.grpc.internal;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static io.grpc.InternalCompressorRegistry.lookupCompressorInfo;
 import static io.grpc.internal.GrpcUtil.ACCEPT_ENCODING_SPLITER;
 import static io.grpc.internal.GrpcUtil.MESSAGE_ACCEPT_ENCODING_KEY;
 import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
+import com.google.common.primitives.Bytes;
 
 import io.grpc.Attributes;
 import io.grpc.Codec;
@@ -48,6 +50,8 @@ import io.grpc.CompressorRegistry;
 import io.grpc.Context;
 import io.grpc.Decompressor;
 import io.grpc.DecompressorRegistry;
+import io.grpc.InternalCompressorRegistry;
+import io.grpc.InternalCompressorRegistry.CompressorInfo;
 import io.grpc.InternalDecompressorRegistry;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
@@ -60,6 +64,8 @@ import java.io.InputStream;
 import java.util.List;
 
 final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
+  private static byte[] identityRawEncoding = getIdentityRawEncoding();
+
   private final ServerStream stream;
   private final MethodDescriptor<ReqT, RespT> method;
   private final Context.CancellableContext context;
@@ -72,6 +78,7 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
   private boolean sendHeadersCalled;
   private boolean closeCalled;
   private Compressor compressor;
+  private byte[] compressorRawEncoding;
 
   ServerCallImpl(ServerStream stream, MethodDescriptor<ReqT, RespT> method,
       Metadata inboundHeaders, Context.CancellableContext context,
@@ -100,29 +107,37 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
     stream.request(numMessages);
   }
 
+  private boolean containsEncoding(byte[] haystack, byte[] needle) {
+    return false;
+  }
+
   @Override
   public void sendHeaders(Metadata headers) {
     checkState(!sendHeadersCalled, "sendHeaders has already been called");
     checkState(!closeCalled, "call is closed");
 
     headers.discardAll(MESSAGE_ENCODING_KEY);
+    final byte[] selectedRawEncoding;
     if (compressor == null) {
       compressor = Codec.Identity.NONE;
+      selectedRawEncoding = identityRawEncoding;
     } else {
       if (messageAcceptEncoding != null) {
-        List<String> acceptedEncodingsList =
-            ACCEPT_ENCODING_SPLITER.splitToList(messageAcceptEncoding);
-        if (!acceptedEncodingsList.contains(compressor.getMessageEncoding())) {
+        if (!containsEncoding(messageAcceptEncoding, compressorRawEncoding)) {
           // resort to using no compression.
           compressor = Codec.Identity.NONE;
+          selectedRawEncoding = identityRawEncoding;
+        } else {
+          selectedRawEncoding = compressorRawEncoding;
         }
       } else {
         compressor = Codec.Identity.NONE;
+        selectedRawEncoding = identityRawEncoding;
       }
     }
 
     // Always put compressor, even if it's identity.
-    headers.put(MESSAGE_ENCODING_KEY, compressor.getMessageEncoding());
+    headers.put(MESSAGE_ENCODING_KEY, selectedRawEncoding);
 
     stream.setCompressor(compressor);
 
@@ -166,8 +181,10 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
     // Added here to give a better error message.
     checkState(!sendHeadersCalled, "sendHeaders has been called");
 
-    compressor = compressorRegistry.lookupCompressor(compressorName);
-    checkArgument(compressor != null, "Unable to find compressor by name %s", compressorName);
+    CompressorInfo ci = lookupCompressorInfo(compressorRegistry, compressorName);
+    checkArgument(ci != null, "Unable to find compressor by name %s", compressorName);
+    compressor = ci.getCompressor();
+    compressorRawEncoding = ci.getRawEncoding();
   }
 
   @Override
@@ -285,5 +302,11 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
       }
       listener.onReady();
     }
+  }
+
+  private static byte[] getIdentityRawEncoding() {
+    CompressorInfo ci = lookupCompressorInfo(
+        CompressorRegistry.getDefaultInstance(), Codec.Identity.NONE.getMessageEncoding());
+    return checkNotNull(ci, "missing identity codec").getRawEncoding();
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015, Google Inc. All rights reserved.
+ * Copyright 2016, Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -32,9 +32,7 @@
 package io.grpc;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -43,28 +41,27 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Tests for {@link DecompressorRegistry}.
+ * Tests for {@link CompressorRegistry}.
  */
 @RunWith(JUnit4.class)
-public class DecompressorRegistryTest {
+public class CompressorRegistryTest {
 
   @Rule public final ExpectedException thrown = ExpectedException.none();
 
-  private final Dummy dummyDecompressor = new Dummy();
-  private DecompressorRegistry registry = DecompressorRegistry.emptyInstance();
+  private CompressorRegistry registry = CompressorRegistry.newEmptyInstance();
 
   @Test
-  public void lookupDecompressor_checkDefaultMessageEncodingsExist() {
+  public void lookupCompressor_checkDefaultMessageEncodingsExist() {
     // Explicitly put the names in, rather than link against MessageEncoding
     assertNotNull("Expected identity to be registered",
-        DecompressorRegistry.getDefaultInstance().lookupDecompressor("identity"));
+        CompressorRegistry.getDefaultInstance().lookupCompressor("identity"));
     assertNotNull("Expected gzip to be registered",
-        DecompressorRegistry.getDefaultInstance().lookupDecompressor("gzip"));
+        CompressorRegistry.getDefaultInstance().lookupCompressor("gzip"));
   }
 
   @Test
@@ -77,104 +74,81 @@ public class DecompressorRegistryTest {
         DecompressorRegistry.getDefaultInstance().getKnownMessageEncodings());
   }
 
-  /*
-   * This test will likely change once encoders are advertised
-   */
   @Test
-  public void getAdvertisedMessageEncodings_noEncodingsAdvertised() {
-    assertTrue(registry.getAdvertisedMessageEncodings().isEmpty());
-  }
-
-  @Test
-  public void registerDecompressor_advertisedDecompressor() {
-    registry = registry.with(dummyDecompressor, true);
-
-    assertTrue(registry.getAdvertisedMessageEncodings()
-        .contains(dummyDecompressor.getMessageEncoding()));
-  }
-
-  @Test
-  public void registerDecompressor_nonadvertisedDecompressor() {
-    registry = registry.with(dummyDecompressor, false);
-
-    assertFalse(registry.getAdvertisedMessageEncodings()
-        .contains(dummyDecompressor.getMessageEncoding()));
-  }
-
-  @Test
-  public void newRegistryFailsOnEmptyName() {
+  public void registerFailsOnEmptyName() {
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("empty");
 
-    registry.with(new Dummy() {
+    registry.register(new Dummy() {
       @Override
       public String getMessageEncoding() {
         return "";
       }
-    }, false);
+    });
   }
 
   @Test
-  public void newRegistryFailsOnNullName() {
+  public void registerFailsOnNullName() {
     thrown.expect(NullPointerException.class);
     thrown.expectMessage("message encoding");
 
-    registry.with(new Dummy() {
+    registry.register(new Dummy() {
       @Override
       public String getMessageEncoding() {
         return null;
       }
-    }, false);
+    });
   }
 
   @Test
-  public void newRegistryFailsOnCommaName() {
+  public void registerFailsOnCommaName() {
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Comma");
 
-    registry.with(new Dummy() {
+    registry.register(new Dummy() {
       @Override
       public String getMessageEncoding() {
         return ",";
       }
-    }, false);
+    });
   }
 
   @Test
-  public void newRegistryFailsOnInvalidName() {
+  public void registerFailsOnInvalidName() {
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid character");
 
-    registry.with(new Dummy() {
+    registry.register(new Dummy() {
       @Override
       public String getMessageEncoding() {
         return "\n";
       }
-    }, false);
+    });
   }
 
   @Test
-  public void newRegistryFailsOnExtraWhitespace() {
+  public void registerFailsOnExtraWhitespace() {
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("whitespace");
 
-    registry.with(new Dummy() {
+    registry.register(new Dummy() {
       @Override
       public String getMessageEncoding() {
         return " gzip ";
       }
-    }, false);
+    });
   }
 
-  private static class Dummy implements Decompressor {
+  private static class Dummy implements Compressor {
+
     @Override
     public String getMessageEncoding() {
       return "dummy";
     }
 
     @Override
-    public InputStream decompress(InputStream is) throws IOException {
-      return is;
+    public OutputStream compress(OutputStream os) throws IOException {
+      return os;
     }
   }
 }
