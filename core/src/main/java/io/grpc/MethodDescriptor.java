@@ -57,15 +57,16 @@ public class MethodDescriptor<ReqT, RespT> {
   private final boolean idempotent;
   private final boolean safe;
 
+  // Initialize size with a constant to break the dependency.
   private final AtomicReferenceArray<Object> rawMethodNames =
-      new AtomicReferenceArray<Object>(InternalKnownTransport.values().length);
+      new AtomicReferenceArray<Object>(1 /* InternalKnownTransport.values().length */);
 
-  final Object getRawMethodName(InternalKnownTransport t) {
-    return rawMethodNames.get(t.ordinal());
+  final Object getRawMethodName(int ordinal) {
+    return rawMethodNames.get(ordinal);
   }
 
-  final void setRawMethodName(InternalKnownTransport t, Object o) {
-    rawMethodNames.lazySet(t.ordinal(), o);
+  final void setRawMethodName(int ordinal, Object o) {
+    rawMethodNames.lazySet(ordinal, o);
   }
 
   /**
