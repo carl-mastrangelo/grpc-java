@@ -31,6 +31,7 @@
 
 package io.grpc.protobuf;
 
+import com.google.protobuf.Descriptors.FileDescriptor;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import com.google.protobuf.Message.Builder;
@@ -38,6 +39,7 @@ import com.google.protobuf.util.JsonFormat;
 import com.google.protobuf.util.JsonFormat.Parser;
 import com.google.protobuf.util.JsonFormat.Printer;
 
+import io.grpc.Attributes;
 import io.grpc.ExperimentalApi;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor.Marshaller;
@@ -55,6 +57,10 @@ import java.nio.charset.Charset;
  * Utility methods for using protobuf with grpc.
  */
 public class ProtoUtils {
+
+  @ExperimentalApi("FIXME")
+  public static final Attributes.Key<FileDescriptor> FILE_DESCRIPTOR_ATTRIBUTES_KEY =
+      Attributes.Key.of("IBetYouDontHaveAKeyWithThisName");
 
   /** Create a {@code Marshaller} for protos of the same type as {@code defaultInstance}. */
   public static <T extends Message> Marshaller<T> marshaller(final T defaultInstance) {

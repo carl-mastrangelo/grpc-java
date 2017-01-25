@@ -46,7 +46,7 @@ import io.grpc.InternalNotifyOnServerBuild;
 import io.grpc.Server;
 import io.grpc.ServerServiceDefinition;
 import io.grpc.Status;
-import io.grpc.protobuf.ProtoFileDescriptorSupplier;
+import io.grpc.protobuf.ProtoUtils;
 import io.grpc.reflection.v1alpha.ErrorResponse;
 import io.grpc.reflection.v1alpha.ExtensionNumberResponse;
 import io.grpc.reflection.v1alpha.ExtensionRequest;
@@ -340,11 +340,10 @@ public final class ProtoReflectionService extends ServerReflectionGrpc.ServerRef
         List<ServerServiceDefinition> currentMutableServices = server.getMutableServices();
         for (ServerServiceDefinition mutableService : currentMutableServices) {
           io.grpc.ServiceDescriptor serviceDescriptor = mutableService.getServiceDescriptor();
-          if (serviceDescriptor.getMarshallerDescriptor() instanceof ProtoFileDescriptorSupplier) {
+          FileDescriptor fileDescriptor =
+              serviceDescriptor.getAttributes().get(ProtoUtils.FILE_DESCRIPTOR_ATTRIBUTES_KEY);
+          if (fileDescriptor != null) {
             String serviceName = serviceDescriptor.getName();
-            FileDescriptor fileDescriptor =
-                ((ProtoFileDescriptorSupplier) serviceDescriptor.getMarshallerDescriptor())
-                    .getFileDescriptor();
             currentFileDescriptors.add(fileDescriptor);
             checkState(!currentServiceNames.contains(serviceName),
                 "Service already defined: %s", serviceName);
@@ -436,10 +435,9 @@ public final class ProtoReflectionService extends ServerReflectionGrpc.ServerRef
       Set<String> seenFiles = new HashSet<String>();
       for (ServerServiceDefinition service : services) {
         io.grpc.ServiceDescriptor serviceDescriptor = service.getServiceDescriptor();
-        if (serviceDescriptor.getMarshallerDescriptor() instanceof ProtoFileDescriptorSupplier) {
-          FileDescriptor fileDescriptor =
-              ((ProtoFileDescriptorSupplier) serviceDescriptor.getMarshallerDescriptor())
-                  .getFileDescriptor();
+        FileDescriptor fileDescriptor =
+            serviceDescriptor.getAttributes().get(ProtoUtils.FILE_DESCRIPTOR_ATTRIBUTES_KEY);
+        if (fileDescriptor != null) {
           String serviceName = serviceDescriptor.getName();
           checkState(!serviceNames.contains(serviceName),
               "Service already defined: %s", serviceName);

@@ -46,37 +46,44 @@ import javax.annotation.Nullable;
 
 /**
  * Descriptor for a service.
+ *
+ * @since 1.0.0
  */
 public final class ServiceDescriptor {
 
   private final String name;
   private final Collection<MethodDescriptor<?, ?>> methods;
-  private final Object marshallerDescriptor;
+  private final Attributes attributes;
 
+  /**
+   * @since 1.0.0
+   */
   public ServiceDescriptor(String name, MethodDescriptor<?, ?>... methods) {
-    this(name, null, Arrays.asList(methods));
+    this(name, Arrays.asList(methods), Attributes.EMPTY);
   }
 
+  /**
+   * @since 1.0.0
+   */
   public ServiceDescriptor(String name, Collection<MethodDescriptor<?, ?>> methods) {
-    this(name, null, methods);
-  }
-
-  public ServiceDescriptor(String name, Object marshallerDescriptor,
-                           MethodDescriptor<?, ?>... methods) {
-    this(name, marshallerDescriptor, Arrays.asList(methods));
+    this(name, methods, Attributes.EMPTY);
   }
 
   /** Creates a new ServiceDescriptor. */
-  public ServiceDescriptor(String name, Object marshallerDescriptor,
-                           Collection<MethodDescriptor<?, ?>> methods) {
+  public ServiceDescriptor(
+      String name, Collection<MethodDescriptor<?, ?>> methods, Attributes attributes) {
     this.name = Preconditions.checkNotNull(name, "name");
     Preconditions.checkNotNull(methods, "methods");
     validateMethodNames(name, methods);
-    this.marshallerDescriptor = marshallerDescriptor;
+    this.attributes = Preconditions.checkNotNull(attributes, "attributes");
     this.methods = Collections.unmodifiableList(new ArrayList<MethodDescriptor<?, ?>>(methods));
   }
 
-  /** Simple name of the service. It is not an absolute path. */
+  /**
+   * Simple name of the service. It is not an absolute path.
+   *
+   * @since 1.0.0
+   */
   public String getName() {
     return name;
   }
@@ -84,19 +91,22 @@ public final class ServiceDescriptor {
   /**
    * A collection of {@link MethodDescriptor} instances describing the methods exposed by the
    * service.
+   *
+   * @since 1.0.0
    */
   public Collection<MethodDescriptor<?, ?>> getMethods() {
     return methods;
   }
 
   /**
-   * Returns a marshaller-specific object that provides additional information about the service.
-   * For example, when using Protobuf this should generally be a
-   * {@link io.grpc.protobuf.ProtoFileDescriptorSupplier}, when present.
+   * Returns additional information about the service.
+   *
+   * @since 1.1.0
    */
   @Nullable
-  public Object getMarshallerDescriptor() {
-    return marshallerDescriptor;
+  @ExperimentalApi("FIXME")
+  public Attributes getAttributes() {
+    return attributes;
   }
 
   static void validateMethodNames(String serviceName, Collection<MethodDescriptor<?, ?>> methods) {
