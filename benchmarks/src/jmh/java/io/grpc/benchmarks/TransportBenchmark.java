@@ -58,6 +58,7 @@ import io.netty.channel.local.LocalServerChannel;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Mode;
@@ -84,6 +85,33 @@ public class TransportBenchmark {
   private Server server;
   private BenchmarkServiceGrpc.BenchmarkServiceBlockingStub stub;
   private volatile EventLoopGroup groupToShutdown;
+
+  private static volatile Object discard;
+
+
+  public static void main(String [] args) throws Exception {
+    TransportBenchmark b = new TransportBenchmark();
+    b.direct = true;
+    b.transport = Transport.NETTY;
+    b.setUp();
+    final AtomicBoolean bo = new AtomicBoolean();
+    new Thread() {
+      @Override
+      public void run() {
+        try {
+          Thread.sleep(10000);
+        } catch (InterruptedException e) {
+          throw new RuntimeException(discard.toString());
+        }
+        bo.set(true);
+      }
+    }.start();
+    while (!bo.get()) {
+      discard = b.unaryCall1024();
+    }
+    ManagedChannel.print.set(true);
+    discard = b.unaryCall1024();
+  }
 
   @Setup
   public void setUp() throws Exception {

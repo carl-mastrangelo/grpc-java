@@ -39,6 +39,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
+import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
@@ -126,8 +127,15 @@ public final class ClientCalls {
    */
   public static <ReqT, RespT> RespT blockingUnaryCall(
       Channel channel, MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, ReqT param) {
+    long started = System.nanoTime();
     ThreadlessExecutor executor = new ThreadlessExecutor();
+    long done = System.nanoTime();
     ClientCall<ReqT, RespT> call = channel.newCall(method, callOptions.withExecutor(executor));
+
+    if (ManagedChannel.print.get()) {
+      System.err.println("created" + (done - started));
+    }
+
     try {
       ListenableFuture<RespT> responseFuture = futureUnaryCall(call, param);
       while (!responseFuture.isDone()) {
@@ -246,14 +254,18 @@ public final class ClientCalls {
       ReqT param,
       ClientCall.Listener<RespT> responseListener,
       boolean streamingResponse) {
+    ManagedChannel.record(call, "starting call");
     startCall(call, responseListener, streamingResponse);
     try {
+      ManagedChannel.record(call, "sending message");
       call.sendMessage(param);
+      ManagedChannel.record(call, "half closing");
       call.halfClose();
     } catch (Throwable t) {
       call.cancel(null, t);
       throw t instanceof RuntimeException ? (RuntimeException) t : new RuntimeException(t);
     }
+    ManagedChannel.record(call, "end async");
   }
 
   private static <ReqT, RespT> StreamObserver<ReqT> asyncStreamingRequestCall(
@@ -267,7 +279,9 @@ public final class ClientCalls {
 
   private static <ReqT, RespT> void startCall(ClientCall<ReqT, RespT> call,
       ClientCall.Listener<RespT> responseListener, boolean streamingResponse) {
+    ManagedChannel.record(call, "  call start");
     call.start(responseListener, new Metadata());
+    ManagedChannel.record(call, "  call started");
     if (streamingResponse) {
       call.request(1);
     } else {
@@ -275,6 +289,7 @@ public final class ClientCalls {
       // more than one responses, we can catch it and fail it in the listener.
       call.request(2);
     }
+    ManagedChannel.record(call, "  call requested");
   }
 
   private static class CallToStreamObserverAdapter<T> extends ClientCallStreamObserver<T> {
@@ -366,6 +381,7 @@ public final class ClientCalls {
 
     @Override
     public void onHeaders(Metadata headers) {
+      ManagedChannel.record(call, "initial headers");
     }
 
     @Override
@@ -376,6 +392,7 @@ public final class ClientCalls {
             .asRuntimeException();
       }
       firstResponseReceived = true;
+      ManagedChannel.record(call, "message recieved");
       observer.onNext(message);
 
       if (streamingResponse && adapter.autoFlowControlEnabled) {
@@ -391,6 +408,7 @@ public final class ClientCalls {
       } else {
         observer.onError(status.asRuntimeException(trailers));
       }
+      ManagedChannel.done(call);
     }
 
     @Override
@@ -414,10 +432,12 @@ public final class ClientCalls {
 
     @Override
     public void onHeaders(Metadata headers) {
+      ManagedChannel.record(responseFuture.call, "initial headers");
     }
 
     @Override
     public void onMessage(RespT value) {
+      ManagedChannel.record(responseFuture.call, "initial message");
       if (this.value != null) {
         throw Status.INTERNAL.withDescription("More than one value received for unary call")
             .asRuntimeException();
@@ -427,6 +447,8 @@ public final class ClientCalls {
 
     @Override
     public void onClose(Status status, Metadata trailers) {
+      ManagedChannel.record(responseFuture.call, "closed");
+      ManagedChannel.done(responseFuture.call);
       if (status.isOk()) {
         if (value == null) {
           // No value received so mark the future as an error

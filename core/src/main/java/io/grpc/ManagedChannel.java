@@ -31,7 +31,13 @@
 
 package io.grpc;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A {@link Channel} that provides lifecycle management.
@@ -102,4 +108,41 @@ public abstract class ManagedChannel extends Channel {
   public void notifyWhenStateChanged(ConnectivityState source, Runnable callback) {
     throw new UnsupportedOperationException("Not implemented");
   }
+
+
+  public static final class Tup {
+    private final long time;
+    private final String name;
+    private Tup(long time, String name) {
+      this.time = time;
+      this.name = name;
+    }
+  }
+
+  public static final AtomicBoolean print = new AtomicBoolean();
+  private static final ConcurrentMap<Object, List<Tup>> events =
+      new ConcurrentHashMap<Object, List<Tup>>();
+
+  public static void record(Object key, String value) {
+    long now = System.nanoTime();
+    if (events.get(key) == null) {
+      events.putIfAbsent(key, Collections.synchronizedList(new ArrayList<Tup>()));
+    }
+    events.get(key).add(new Tup(now, value));
+  }
+
+  public static void done(Object key) {
+    ArrayList<Tup> glub = new ArrayList<Tup>(events.remove(key));
+    if (glub.isEmpty()) {
+      return;
+    }
+    if (!print.get()) {
+      return;
+    }
+    long start = glub.get(0).time;
+    for (Tup tup : glub) {
+      System.err.println((tup.time - start) + " " + tup.name);
+    }
+  }
+
 }
