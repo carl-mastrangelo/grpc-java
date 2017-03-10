@@ -27,6 +27,7 @@ jmh {
     warmupIterations = 10
     iterations = 10
     fork = 1
+    include = "Transport"
     jvmArgs = "-server -Xms2g -Xmx2g"
 }
 

@@ -56,6 +56,7 @@ import io.grpc.Decompressor;
 import io.grpc.DecompressorRegistry;
 import io.grpc.InternalDecompressorRegistry;
 import io.grpc.LoadBalancer.PickSubchannelArgs;
+import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.MethodDescriptor.MethodType;
@@ -94,6 +95,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
   private DecompressorRegistry decompressorRegistry = DecompressorRegistry.getDefaultInstance();
   private CompressorRegistry compressorRegistry = CompressorRegistry.getDefaultInstance();
 
+  public volatile Object callTag = new Object();
+
   ClientCallImpl(MethodDescriptor<ReqT, RespT> method, Executor executor,
       CallOptions callOptions, StatsTraceContext statsTraceCtx,
       ClientTransportProvider clientTransportProvider,
@@ -118,6 +121,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
   @Override
   public void cancelled(Context context) {
     stream.cancel(statusFromCancelled(context));
+  }
+
+  ClientCallImpl<ReqT, RespT> setCallTag(Object callTag) {
+    this.callTag = callTag;
+    return this;
   }
 
   /**
@@ -161,6 +169,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
 
   @Override
   public void start(final Listener<RespT> observer, Metadata headers) {
+    ManagedChannel.record(callTag, "callstart");
     checkState(stream == null, "Already started");
     checkNotNull(observer, "observer");
     checkNotNull(headers, "headers");
@@ -181,6 +190,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
       }
 
       callExecutor.execute(new ClosedByContext());
+      ManagedChannel.record(callTag, "callstart");
       return;
     }
     final String compressorName = callOptions.getCompressor();
@@ -205,6 +215,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
         }
 
         callExecutor.execute(new ClosedByNotFoundCompressor());
+        ManagedChannel.record(callTag, "callstart");
         return;
       }
     } else {
@@ -259,6 +270,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
       // was cancelled.
       removeContextListenerAndCancelDeadlineFuture();
     }
+    ManagedChannel.record(callTag, "callstartdone");
   }
 
   /**
@@ -341,18 +353,22 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
 
   @Override
   public void request(int numMessages) {
+    ManagedChannel.record(callTag, "callrequest");
     Preconditions.checkState(stream != null, "Not started");
     checkArgument(numMessages >= 0, "Number requested must be non-negative");
     stream.request(numMessages);
+    ManagedChannel.record(callTag, "callrequestdone");
   }
 
   @Override
   public void cancel(@Nullable String message, @Nullable Throwable cause) {
+    ManagedChannel.record(callTag, "callcancel");
     if (message == null && cause == null) {
       cause = new CancellationException("Cancelled without a message or cause");
       log.log(Level.WARNING, "Cancelling without a message or cause is suboptimal", cause);
     }
     if (cancelCalled) {
+      ManagedChannel.record(callTag, "callcanceldone");
       return;
     }
     cancelCalled = true;
@@ -370,21 +386,25 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
         stream.cancel(status);
       }
     } finally {
+      ManagedChannel.record(callTag, "callcanceldone");
       removeContextListenerAndCancelDeadlineFuture();
     }
   }
 
   @Override
   public void halfClose() {
+    ManagedChannel.record(callTag, "callhalfclose");
     Preconditions.checkState(stream != null, "Not started");
     Preconditions.checkState(!cancelCalled, "call was cancelled");
     Preconditions.checkState(!halfCloseCalled, "call already half-closed");
     halfCloseCalled = true;
     stream.halfClose();
+    ManagedChannel.record(callTag, "callhalfclosedone");
   }
 
   @Override
   public void sendMessage(ReqT message) {
+    ManagedChannel.record(callTag, "callsendmessage");
     Preconditions.checkState(stream != null, "Not started");
     Preconditions.checkState(!cancelCalled, "call was cancelled");
     Preconditions.checkState(!halfCloseCalled, "call was half-closed");
@@ -394,6 +414,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
       stream.writeMessage(messageIs);
     } catch (Throwable e) {
       stream.cancel(Status.CANCELLED.withCause(e).withDescription("Failed to stream message"));
+      ManagedChannel.record(callTag, "callsendmessagedone");
       return;
     }
     // For unary requests, we don't flush since we know that halfClose should be coming soon. This
@@ -402,6 +423,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
     if (!unaryRequest) {
       stream.flush();
     }
+    ManagedChannel.record(callTag, "callsendmessagedone");
   }
 
   @Override
@@ -426,6 +448,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
   private void closeObserver(Listener<RespT> observer, Status status, Metadata trailers) {
     statsTraceCtx.callEnded(status);
     observer.onClose(status, trailers);
+    ManagedChannel.record(callTag, "callcloseddoneobs");
+    ManagedChannel.done(callTag);
   }
 
   private class ClientStreamListenerImpl implements ClientStreamListener {
@@ -438,6 +462,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
 
     @Override
     public void headersRead(final Metadata headers) {
+      ManagedChannel.record(callTag, "callheadersread");
       Decompressor decompressor = Codec.Identity.NONE;
       if (headers.containsKey(MESSAGE_ENCODING_KEY)) {
         String encoding = headers.get(MESSAGE_ENCODING_KEY);
@@ -457,6 +482,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
 
         @Override
         public final void runInContext() {
+          ManagedChannel.record(callTag, "callheadersreadctx");
           try {
             if (closed) {
               return;
@@ -467,15 +493,19 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
                 Status.CANCELLED.withCause(t).withDescription("Failed to read headers");
             stream.cancel(status);
             close(status, new Metadata());
+          } finally {
+            ManagedChannel.record(callTag, "callheadersreadctxdone");
           }
         }
       }
 
       callExecutor.execute(new HeadersRead());
+      ManagedChannel.record(callTag, "callheadersreaddone");
     }
 
     @Override
     public void messageRead(final InputStream message) {
+      ManagedChannel.record(callTag, "callmessageread");
       class MessageRead extends ContextRunnable {
         MessageRead() {
           super(context);
@@ -483,6 +513,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
 
         @Override
         public final void runInContext() {
+          ManagedChannel.record(callTag, "callmessagereadctx");
           try {
             if (closed) {
               return;
@@ -497,11 +528,14 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
                 Status.CANCELLED.withCause(t).withDescription("Failed to read message.");
             stream.cancel(status);
             close(status, new Metadata());
+          } finally {
+            ManagedChannel.record(callTag, "callmessagereadctxdone");
           }
         }
       }
 
       callExecutor.execute(new MessageRead());
+      ManagedChannel.record(callTag, "callmessagereaddone");
     }
 
     /**
@@ -519,6 +553,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
 
     @Override
     public void closed(Status status, Metadata trailers) {
+      ManagedChannel.record(callTag, "callclosed");
       Deadline deadline = effectiveDeadline();
       if (status.getCode() == Status.Code.CANCELLED && deadline != null) {
         // When the server's deadline expires, it can only reset the stream with CANCEL and no
@@ -539,6 +574,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
 
         @Override
         public final void runInContext() {
+          ManagedChannel.record(callTag, "callclosedctx");
           if (closed) {
             // We intentionally don't keep the status or metadata from the server.
             return;
@@ -548,10 +584,12 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
       }
 
       callExecutor.execute(new StreamClosed());
+      ManagedChannel.record(callTag, "callcloseddone");
     }
 
     @Override
     public void onReady() {
+      ManagedChannel.record(callTag, "callonready");
       class StreamOnReady extends ContextRunnable {
         StreamOnReady() {
           super(context);
@@ -559,6 +597,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
 
         @Override
         public final void runInContext() {
+          ManagedChannel.record(callTag, "callonreadyctx");
           try {
             observer.onReady();
           } catch (Throwable t) {
@@ -566,11 +605,14 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT>
                 Status.CANCELLED.withCause(t).withDescription("Failed to call onReady.");
             stream.cancel(status);
             close(status, new Metadata());
+          } finally {
+            ManagedChannel.record(callTag, "callonreadyctxdone");
           }
         }
       }
 
       callExecutor.execute(new StreamOnReady());
+      ManagedChannel.record(callTag, "callonreadydone");
     }
   }
 }

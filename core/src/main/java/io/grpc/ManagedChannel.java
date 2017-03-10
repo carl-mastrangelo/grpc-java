@@ -31,7 +31,12 @@
 
 package io.grpc;
 
+import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A {@link Channel} that provides lifecycle management.
@@ -101,5 +106,59 @@ public abstract class ManagedChannel extends Channel {
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/28")
   public void notifyWhenStateChanged(ConnectivityState source, Runnable callback) {
     throw new UnsupportedOperationException("Not implemented");
+  }
+
+  private static final class Record {
+    private final long time;
+
+    private final String name;
+
+    Record(long time, String name) {
+      this.time = time;
+      this.name = name;
+    }
+  }
+
+  public static volatile boolean enable;
+  private static final ConcurrentMap<Object, Queue<Record>> records =
+      new ConcurrentHashMap<Object, Queue<Record>>();
+
+  /**
+   * Javadoc.
+   */
+  public static void record(Object key, String tag) {
+    Queue<Record> list;
+    long now = System.nanoTime();
+    while ((list = records.get(key)) == null) {
+      records.putIfAbsent(key, new ConcurrentLinkedQueue<ManagedChannel.Record>());
+    }
+    list.add(new Record(now, tag));
+  }
+
+
+  private static final AtomicBoolean printing = new AtomicBoolean();
+
+  /**
+   * Javadoc.
+   */
+  public static void done(Object key) {
+    Queue<Record> q = records.remove(key);
+    if (q == null || q.isEmpty()) {
+      return;
+    }
+    if (!enable) {
+      return;
+    }
+    if (!printing.compareAndSet(false, true)) {
+      return;
+    }
+
+    Record first = q.peek();
+    Record last = first;
+    for (Record r : q) {
+      System.err.println((r.time - first.time) + "(~" + (r.time - last.time) + "): " + r.name);
+      last = r;
+    }
+    printing.set(false);
   }
 }

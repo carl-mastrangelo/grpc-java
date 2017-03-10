@@ -58,6 +58,8 @@ import io.netty.channel.local.LocalServerChannel;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Mode;
@@ -78,7 +80,7 @@ public class TransportBenchmark {
   @Param({"INPROCESS", "NETTY", "NETTY_LOCAL", "OKHTTP"})
   public Transport transport;
   @Param({"true", "false"})
-  public boolean direct;
+  public boolean direct = true;
 
   private ManagedChannel channel;
   private Server server;
@@ -172,6 +174,8 @@ public class TransportBenchmark {
 
   @TearDown
   public void tearDown() throws Exception {
+    ManagedChannel.enable = true;
+    stub.unaryCall(simpleRequest);
     channel.shutdown();
     server.shutdown();
     channel.awaitTermination(1, TimeUnit.SECONDS);
@@ -195,6 +199,36 @@ public class TransportBenchmark {
       .setResponseSize(1024)
       .setPayload(Payload.newBuilder().setBody(ByteString.copyFrom(new byte[1024])))
       .build();
+
+  /**
+   * Javadoc.
+   */
+  public static void main(String [] args) throws Exception {
+    TransportBenchmark b = new TransportBenchmark();
+    b.transport = Transport.NETTY;
+    b.setUp();
+    final AtomicBoolean stop = new AtomicBoolean();
+    final AtomicReference<Object> ref = new AtomicReference<Object>();
+    new Thread() {
+      @Override
+      public void run() {
+        try {
+          Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+        } catch (InterruptedException e) {
+          throw new RuntimeException(ref.toString(), e);
+        } finally {
+          stop.set(true);
+        }
+      }
+    }.start();
+    while (!stop.get()) {
+      ref.set(b.unaryCall1024());
+    }
+    ManagedChannel.enable = true;
+    ref.set(b.unaryCall1024());
+
+    b.tearDown();
+  }
 
   @Benchmark
   @BenchmarkMode(Mode.SampleTime)

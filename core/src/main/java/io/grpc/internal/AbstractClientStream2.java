@@ -49,6 +49,14 @@ public abstract class AbstractClientStream2 extends AbstractStream2
 
   private static final Logger log = Logger.getLogger(AbstractClientStream2.class.getName());
 
+  private volatile Object callTag = new Object();
+
+
+  @Override
+  public void setCallTag(Object callTag) {
+    this.callTag = callTag;
+  }
+
   /**
    * A sink for outbound operations, separated from the stream simply to avoid name
    * collisions/confusion. Only called from application thread.

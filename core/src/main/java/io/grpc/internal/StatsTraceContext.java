@@ -47,6 +47,10 @@ import io.grpc.Status;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.lang.ref.Reference;
+import java.lang.ref.WeakReference;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -61,6 +65,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @SuppressWarnings("NonAtomicVolatileUpdate")
 public final class StatsTraceContext {
+  private static final ThreadLocal<Reference<Map<StatsContextFactory, Metadata.Key<StatsContext>>>> thing =
+      new ThreadLocal<Reference<Map<StatsContextFactory, Metadata.Key<StatsContext>>>>();
+
   public static final StatsTraceContext NOOP = StatsTraceContext.newClientContext(
       "noopservice/noopmethod", NoopStatsContextFactory.INSTANCE,
       GrpcUtil.STOPWATCH_SUPPLIER);
@@ -88,7 +95,7 @@ public final class StatsTraceContext {
     TagKey methodTagKey =
         side == Side.CLIENT ? RpcConstants.RPC_CLIENT_METHOD : RpcConstants.RPC_SERVER_METHOD;
     // TODO(carl-mastrangelo): maybe cache TagValue in MethodDescriptor
-    this.statsCtx = parentCtx.with(methodTagKey, TagValue.create(fullMethodName));
+    this.statsCtx = parentCtx.with(methodTagKey, null /*TagValue.create(fullMethodName)*/);
     this.stopwatch = stopwatchSupplier.get().start();
     this.statsHeader = statsHeader;
   }
@@ -149,9 +156,20 @@ public final class StatsTraceContext {
     return statsCtx;
   }
 
+
+
   @VisibleForTesting
   static Metadata.Key<StatsContext> createStatsHeader(final StatsContextFactory statsCtxFactory) {
-    return Metadata.Key.of("grpc-census-bin", new Metadata.BinaryMarshaller<StatsContext>() {
+    Reference<Map<StatsContextFactory, Metadata.Key<StatsContext>>> mapRef = null;
+    Map<StatsContextFactory, Metadata.Key<StatsContext>> map = null;
+    if ((mapRef = thing.get()) == null || (map = mapRef.get()) == null) {
+      map = new IdentityHashMap<StatsContextFactory, Metadata.Key<StatsContext>>();
+      mapRef = new WeakReference<Map<StatsContextFactory, Metadata.Key<StatsContext>>>(map);
+      thing.set(mapRef);
+    }
+    Metadata.Key<StatsContext> key = null;
+    if ((key = map.get(statsCtxFactory)) == null) {
+      key = Metadata.Key.of("grpc-census-bin", new Metadata.BinaryMarshaller<StatsContext>() {
         @Override
         public byte[] toBytes(StatsContext context) {
           // TODO(carl-mastrangelo): currently we only make sure the correctness. We may need to
@@ -174,6 +192,9 @@ public final class StatsTraceContext {
           }
         }
       });
+      map.put(statsCtxFactory, key);
+    }
+    return key;
   }
 
   /**

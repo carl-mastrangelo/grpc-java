@@ -545,21 +545,31 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
     @Override
     public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,
         CallOptions callOptions) {
-      Executor executor = callOptions.getExecutor();
-      if (executor == null) {
-        executor = ManagedChannelImpl.this.executor;
+      Object callTag = new Object();
+      try {
+        record(callTag, "dummy");
+        record(callTag, "calltimer");
+        record(callTag, "callcreate");
+        Executor executor = callOptions.getExecutor();
+        if (executor == null) {
+          executor = ManagedChannelImpl.this.executor;
+        }
+        StatsTraceContext statsTraceCtx = StatsTraceContext.newClientContext(
+            method.getFullMethodName(), statsFactory, stopwatchSupplier);
+        record(callTag, "callcreatestats");
+        return new ClientCallImpl<ReqT, RespT>(
+            method,
+            executor,
+            callOptions,
+            statsTraceCtx,
+            transportProvider,
+            scheduledExecutor)
+                .setDecompressorRegistry(decompressorRegistry)
+                .setCompressorRegistry(compressorRegistry)
+                .setCallTag(callTag);
+      } finally {
+        record(callTag, "callcreatedone");
       }
-      StatsTraceContext statsTraceCtx = StatsTraceContext.newClientContext(
-          method.getFullMethodName(), statsFactory, stopwatchSupplier);
-      return new ClientCallImpl<ReqT, RespT>(
-          method,
-          executor,
-          callOptions,
-          statsTraceCtx,
-          transportProvider,
-          scheduledExecutor)
-              .setDecompressorRegistry(decompressorRegistry)
-              .setCompressorRegistry(compressorRegistry);
     }
 
     @Override
