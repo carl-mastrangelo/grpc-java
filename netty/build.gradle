@@ -1,0 +1,28 @@
+description = "gRPC: Netty"
+dependencies {
+    compile project(':grpc-core'),
+            libraries.netty,
+            libraries.netty_proxy_handler
+
+    // Tests depend on base class defined by core module.
+    testCompile project(':grpc-core').sourceSets.test.output,
+                project(':grpc-testing')
+    testRuntime libraries.netty_tcnative
+    signature "org.codehaus.mojo.signature:java17:+@signature"
+}
+
+[compileJava, compileTestJava].each() {
+  // Netty retuns a lot of futures that we mostly don't care about.
+  it.options.compilerArgs += ["-Xep:FutureReturnValueIgnored:OFF"]
+}
+
+javadoc.options.links 'http://netty.io/4.1/api/'
+
+project.sourceSets {
+    main {
+        java {
+            srcDir "${projectDir}/third_party/netty/java"
+        }
+    }
+}
+

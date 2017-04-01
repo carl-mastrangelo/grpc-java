@@ -1,0 +1,6 @@
+description = 'gRPC: Context'
+
+dependencies {
+    testCompile project(':grpc-testing')
+    signature "org.codehaus.mojo.signature:java16:+@signature"
+}

@@ -1,0 +1,13 @@
+description = 'gRPC: Core'
+
+dependencies {
+    compile libraries.guava,
+            libraries.errorprone,
+            libraries.jsr305,
+            project(':grpc-context'),
+            libraries.instrumentation_api
+    testCompile project(':grpc-testing')
+    signature "org.codehaus.mojo.signature:java16:+@signature"
+}
+
+javadoc.exclude 'io/grpc/internal/**'
