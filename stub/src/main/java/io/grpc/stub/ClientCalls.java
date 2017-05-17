@@ -115,7 +115,9 @@ public final class ClientCalls {
       return getUnchecked(futureUnaryCall(call, param));
     } catch (Throwable t) {
       call.cancel(null, t);
-      throw t instanceof RuntimeException ? (RuntimeException) t : new RuntimeException(t);
+      throw t instanceof RuntimeException
+          ? (RuntimeException) t
+          : Status.fromThrowable(t).asRuntimeException();
     }
   }
 
