@@ -87,11 +87,22 @@ public class MessageDeframer implements Closeable {
   private int requiredLength = HEADER_LENGTH;
   private boolean compressedFlag;
   private boolean endOfStream;
-  private CompositeReadableBuffer nextFrame;
-  private CompositeReadableBuffer unprocessed = new CompositeReadableBuffer();
   private long pendingDeliveries;
+  private RBuf rbuf;
   private boolean deliveryStalled = true;
   private boolean inDelivery = false;
+
+  private int have;
+  private int want = 5;
+
+  private void addBuf(RBuf b) {
+    have += b.size();
+    if (rbuf == null) {
+      rbuf = b;
+    } else {
+      rbuf.next(b);
+    }
+  }
 
   /**
    * Create a deframer.
@@ -143,6 +154,8 @@ public class MessageDeframer implements Closeable {
     deliver();
   }
 
+
+
   /**
    * Adds the given data to this deframer and attempts delivery to the listener.
    *
@@ -153,14 +166,14 @@ public class MessageDeframer implements Closeable {
    * @throws IllegalStateException if {@link #close()} has been called previously or if
    *         this method has previously been called with {@code endOfStream=true}.
    */
-  public void deframe(ReadableBuffer data, boolean endOfStream) {
+  public void deframe(RBuf data, boolean endOfStream) {
     Preconditions.checkNotNull(data, "data");
     boolean needToCloseData = true;
     try {
       checkNotClosed();
       Preconditions.checkState(!this.endOfStream, "Past end of stream");
 
-      unprocessed.addBuffer(data);
+      addBuf(data);
       needToCloseData = false;
 
       // Indicate that all of the data for this stream has been received.
@@ -214,10 +227,32 @@ public class MessageDeframer implements Closeable {
     Preconditions.checkState(!isClosed(), "MessageDeframer is already closed");
   }
 
+
+
+  boolean inHeader = true;
+
+
+
   /**
    * Reads and delivers as many messages to the listener as possible.
    */
   private void deliver() {
+
+
+    while (have >= want && pendingDeliveries > 0) {
+      if (inHeader) {
+        have -= want;
+        byte flags = rbuf.readByte();
+        int length = rbuf.readInt();
+        inHeader = false;
+      } else {
+
+        inHeader = true;
+      }
+    }
+
+
+
     // We can have reentrancy here when using a direct executor, triggered by calls to
     // request more messages. This is safe as we simply loop until pendingDelivers = 0
     if (inDelivery) {
