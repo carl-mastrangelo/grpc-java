@@ -24,10 +24,12 @@ import io.grpc.Attributes;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.NameResolver;
 import io.grpc.Status;
+import io.grpc.internal.DnsNameResolver.ResolutionResults.SrvRecord;
 import io.grpc.internal.SharedResourceHolder.Resource;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -61,6 +63,9 @@ final class DnsNameResolver extends NameResolver {
 
   @VisibleForTesting
   static boolean enableJndi = false;
+
+  @VisibleForTesting
+  static boolean enableSrv = false;
 
   private DelegateResolver delegateResolver = pickDelegateResolver();
 
@@ -273,10 +278,24 @@ final class DnsNameResolver extends NameResolver {
   static final class ResolutionResults {
     final List<InetAddress> addresses;
     final List<String> txtRecords;
+    final List<SrvRecord> srvRecords;
 
-    ResolutionResults(List<InetAddress> addresses, List<String> txtRecords) {
+    ResolutionResults(
+        List<InetAddress> addresses, List<String> txtRecords, List<SrvRecord> srvRecords) {
       this.addresses = Collections.unmodifiableList(checkNotNull(addresses, "addresses"));
       this.txtRecords = Collections.unmodifiableList(checkNotNull(txtRecords, "txtRecords"));
+      this.srvRecords = Collections.unmodifiableList(checkNotNull(srvRecords, "srvRecords"));
+    }
+
+    @VisibleForTesting
+    static final class SrvRecord {
+      final String authority;
+      final List<InetSocketAddress> addresses;
+
+      SrvRecord(String authority, List<InetSocketAddress> addresses) {
+        this.authority = authority;
+        this.addresses = Collections.unmodifiableList(checkNotNull(addresses, "addresses"));
+      }
     }
   }
 
@@ -300,14 +319,16 @@ final class DnsNameResolver extends NameResolver {
       ResolutionResults jdkResults = jdkResovler.resolve(host);
       List<InetAddress> addresses = jdkResults.addresses;
       List<String> txtRecords = Collections.emptyList();
+      List<SrvRecord> srvRecords = Collections.emptyList();
       try {
-        ResolutionResults jdniResults = jndiResovler.resolve(host);
-        txtRecords = jdniResults.txtRecords;
+        ResolutionResults jndiResults = jndiResovler.resolve(host);
+        txtRecords = jndiResults.txtRecords;
+        srvRecords = jndiResults.srvRecords;
       } catch (Exception e) {
-        logger.log(Level.SEVERE, "Failed to resolve TXT results", e);
+        logger.log(Level.SEVERE, "Failed to resolve TXT/SRV results", e);
       }
 
-      return new ResolutionResults(addresses, txtRecords);
+      return new ResolutionResults(addresses, txtRecords, srvRecords);
     }
   }
 
@@ -323,7 +344,8 @@ final class DnsNameResolver extends NameResolver {
     ResolutionResults resolve(String host) throws Exception {
       return new ResolutionResults(
           Arrays.asList(InetAddress.getAllByName(host)),
-          Collections.<String>emptyList());
+          Collections.<String>emptyList(),
+          Collections.<SrvRecord>emptyList());
     }
   }
 
@@ -335,21 +357,25 @@ final class DnsNameResolver extends NameResolver {
   @VisibleForTesting
   static final class JndiResolver extends DelegateResolver {
 
-    private static final String[] rrTypes = new String[]{"TXT"};
+    private static final String[] txtType = new String[]{"TXT"};
+    private static final String[] srvType = new String[]{"SRV"};
 
     @Override
-    ResolutionResults resolve(String host) throws NamingException {
+    ResolutionResults resolve(String host) throws NamingException, UnknownHostException {
+      List<InetAddress> addresses = Collections.emptyList();
+      return new ResolutionResults(addresses, resolveTxtRecords(host), resolveSrvRecords(host));
+    }
 
+    private List<String> resolveTxtRecords(String host) throws NamingException {
       InitialDirContext dirContext = new InitialDirContext();
-      javax.naming.directory.Attributes attrs = dirContext.getAttributes("dns:///" + host, rrTypes);
-      List<InetAddress> addresses = new ArrayList<InetAddress>();
+      javax.naming.directory.Attributes attrs = dirContext.getAttributes("dns:///" + host, txtType);
       List<String> txtRecords = new ArrayList<String>();
 
       NamingEnumeration<? extends Attribute> rrGroups = attrs.getAll();
       try {
         while (rrGroups.hasMore()) {
           Attribute rrEntry = rrGroups.next();
-          assert Arrays.asList(rrTypes).contains(rrEntry.getID());
+          assert Arrays.asList(txtType).contains(rrEntry.getID());
           NamingEnumeration<?> rrValues = rrEntry.getAll();
           try {
             while (rrValues.hasMore()) {
@@ -363,8 +389,51 @@ final class DnsNameResolver extends NameResolver {
       } finally {
         rrGroups.close();
       }
+      return txtRecords;
+    }
 
-      return new ResolutionResults(addresses, txtRecords);
+    private List<SrvRecord> resolveSrvRecords(String host)
+        throws NamingException, UnknownHostException {
+      String srvHost = "_grpclb._tcp." + host;
+      InitialDirContext dirContext = new InitialDirContext();
+      javax.naming.directory.Attributes attrs =
+          dirContext.getAttributes("dns:///" + srvHost, srvType);
+      List<SrvRecord> srvRecords = new ArrayList<SrvRecord>();
+
+      NamingEnumeration<? extends Attribute> rrGroups = attrs.getAll();
+      try {
+        while (rrGroups.hasMore()) {
+          Attribute rrEntry = rrGroups.next();
+          assert Arrays.asList(srvType).contains(rrEntry.getID());
+          NamingEnumeration<?> rrValues = rrEntry.getAll();
+          try {
+            while (rrValues.hasMore()) {
+              String rrValue = (String) rrValues.next();
+              String[] vals = rrValue.split(" ");
+              if (vals.length != 4) { // priority weight port target
+                throw new RuntimeException(
+                    "invalid SRV record for host " + srvHost + ": " + rrValue);
+              }
+              int port = Integer.parseInt(vals[2]);
+              srvRecords.add(resolveSrvBackend(vals[3], port));
+            }
+          } finally {
+            rrValues.close();
+          }
+        }
+      } finally {
+        rrGroups.close();
+      }
+      return srvRecords;
+    }
+
+    private SrvRecord resolveSrvBackend(String host, int port) throws UnknownHostException {
+      InetAddress[] addrs = InetAddress.getAllByName(host);
+      List<InetSocketAddress> sockAddrs = new ArrayList<InetSocketAddress>(addrs.length);
+      for (InetAddress addr : addrs) {
+        sockAddrs.add(new InetSocketAddress(addr, port));
+      }
+      return new SrvRecord(GrpcUtil.authorityFromHostAndPort(host, port), sockAddrs);
     }
   }
 }

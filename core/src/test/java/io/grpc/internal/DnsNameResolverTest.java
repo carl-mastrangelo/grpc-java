@@ -34,6 +34,7 @@ import io.grpc.NameResolver;
 import io.grpc.Status;
 import io.grpc.internal.DnsNameResolver.DelegateResolver;
 import io.grpc.internal.DnsNameResolver.ResolutionResults;
+import io.grpc.internal.DnsNameResolver.ResolutionResults.SrvRecord;
 import io.grpc.internal.SharedResourceHolder.Resource;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -282,7 +283,7 @@ public class DnsNameResolverTest {
     assertThat(results.txtRecords).isNotNull();
   }
 
-  @Test(timeout = 10000)
+  @Test(timeout = 1000000)
   public void jndiResolverWorks() throws Exception {
     Assume.assumeTrue(DnsNameResolver.jndiAvailable());
     DnsNameResolver.DelegateResolver resolver = new DnsNameResolver.JndiResolver();
@@ -380,7 +381,8 @@ public class DnsNameResolverTest {
       answers.add(
           new ResolutionResults(
               addresses,
-              MoreObjects.firstNonNull(txtRecords, Collections.<String>emptyList())));
+              MoreObjects.firstNonNull(txtRecords, Collections.<String>emptyList()),
+              MoreObjects.firstNonNull(null, Collections.<SrvRecord>emptyList())));
       return this;
     }
 
