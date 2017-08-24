@@ -22,6 +22,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelPromise;
+import io.netty.util.internal.PlatformDependent;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -51,7 +52,7 @@ class WriteQueue {
 
   public WriteQueue(Channel channel) {
     this.channel = Preconditions.checkNotNull(channel, "channel");
-    queue = new ConcurrentLinkedQueue<QueuedCommand>();
+    queue = PlatformDependent.newMpscQueue();
   }
 
   /**

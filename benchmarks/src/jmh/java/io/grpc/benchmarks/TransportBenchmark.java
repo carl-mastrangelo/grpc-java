@@ -60,7 +60,7 @@ public class TransportBenchmark {
     INPROCESS, NETTY, NETTY_LOCAL, NETTY_EPOLL, OKHTTP
   }
 
-  @Param({"INPROCESS", "NETTY", "NETTY_LOCAL", "OKHTTP"})
+  @Param({"NETTY", "NETTY_LOCAL"})
   public Transport transport;
   @Param({"true", "false"})
   public boolean direct;
