@@ -27,6 +27,10 @@ import java.io.Closeable;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.Queue;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -77,6 +81,25 @@ public class MessageDeframer implements Closeable, Deframer {
      */
     void deframeFailed(Throwable cause);
   }
+
+  private static final int STATE_HEADER = 1;
+  private static final int STATE_BODY = 2;
+
+  private State1 state1 = new State1();
+
+  private static final class State1 {
+    // Are we currently deframing.
+    boolean inDeframer;
+    // what part of the message are we decoding
+    int frameState = STATE_HEADER;
+    /** The current buffer being decoded.  It must be null before and after leaving the deframer. */
+    ReadableBuffer currentBuffer;
+    /** Data that has yet to be processed, even into a partial frame. */
+    private Deque<ReadableBuffer> unprocessed;
+  }
+
+
+
 
   private enum State {
     HEADER, BODY
@@ -139,13 +162,13 @@ public class MessageDeframer implements Closeable, Deframer {
   @Override
   public void deframe(ReadableBuffer data) {
     Preconditions.checkNotNull(data, "data");
+
     boolean needToCloseData = true;
     try {
       if (!isClosedOrScheduledToClose()) {
-        unprocessed.addBuffer(data);
         needToCloseData = false;
 
-        deliver();
+        deliver(data);
       }
     } finally {
       if (needToCloseData) {
@@ -208,6 +231,99 @@ public class MessageDeframer implements Closeable, Deframer {
   private boolean isClosedOrScheduledToClose() {
     return isClosed() || closeWhenComplete;
   }
+
+  private void deliver(@Nullable ReadableBuffer buf) {
+    // We can have reentrancy here when using a direct executor, triggered by calls to
+    // request more messages. This is safe as we simply loop until pendingDelivers = 0
+    if (inDelivery) {
+      return;
+    }
+    inDelivery = true;
+    try {
+      deliverNonReentrant(buf);
+    } finally {
+      inDelivery = false;
+    }
+  }
+
+  private Deque<ReadableBuffer> unprocessed1;
+  private Deque<ReadableBuffer> getUnprocessed() {
+    if (unprocessed1 == null) {
+      unprocessed1 = new ArrayDeque<ReadableBuffer>(4);
+    }
+    return unprocessed1;
+  }
+
+  private ByteBuffer headerBytes = ByteBuffer.allocate(HEADER_LENGTH);
+
+  private void deliverNonReentrant(@Nullable ReadableBuffer inBuf) {
+    ReadableBuffer buf = inBuf != null ? inBuf : getUnprocessed().getFirst();
+    while (!stopDelivery && pendingDeliveries > 0 && buf != null) {
+      if (state == State.HEADER) {
+        if (headerBytes.remaining() == HEADER_LENGTH && buf.readableBytes() >= HEADER_LENGTH) {
+          // fast path
+          int flags = buf.readUnsignedByte();
+          int length = buf.readInt();
+          handlerHeader0(flags, length);
+        } else {
+          slowReadHeader(buf);
+        }
+      }
+    }
+    if (stopDelivery) {
+      close();
+      return;
+    }
+    boolean stalled = unprocessed1 == null || getUnprocessed().isEmpty();
+    if (closeWhenComplete && stalled) {
+      close();
+    }
+  }
+
+  private ReadableBuffer slowReadHeader(ReadableBuffer current) {
+    while (headerBytes.remaining() != 0 && current.readableBytes() > 0) {
+      headerBytes.put((byte) current.readUnsignedByte());
+    }
+
+    if (headerBytes.remaining() == 0) {
+      headerBytes.flip();
+      int flags = headerBytes.get();
+      int length = headerBytes.getInt();
+      headerBytes.flip();
+      return current;
+    }
+
+    if (unprocessed1 != null && (current = unprocessed1.pollFirst()) != null) {
+      do {
+
+      } while ((current = unprocessed1.pollFirst()) != null);
+    }
+
+    return current;
+  }
+
+  private void handlerHeader0(int flags, int length) {
+    if ((flags & RESERVED_MASK) != 0) {
+      throw Status.INTERNAL.withDescription(
+          debugString + ": Frame header malformed: reserved bits not zero")
+          .asRuntimeException();
+    }
+    compressedFlag = (flags & COMPRESSED_FLAG_MASK) != 0;
+
+    // Update the required length to include the length of the frame.
+    requiredLength = length;
+    if (requiredLength < 0 || requiredLength > maxInboundMessageSize) {
+      throw Status.RESOURCE_EXHAUSTED.withDescription(
+          String.format("%s: Frame size %d exceeds maximum: %d. ",
+              debugString, requiredLength, maxInboundMessageSize))
+          .asRuntimeException();
+    }
+
+    statsTraceCtx.inboundMessage();
+    // Continue reading the frame body.
+    state = State.BODY;
+  }
+
 
   /**
    * Reads and delivers as many messages to the listener as possible.
@@ -439,8 +555,8 @@ public class MessageDeframer implements Closeable, Deframer {
     private void verifySize() {
       if (count > maxMessageSize) {
         throw Status.RESOURCE_EXHAUSTED.withDescription(String.format(
-                "%s: Compressed frame exceeds maximum frame size: %d. Bytes read: %d. ",
-                debugString, maxMessageSize, count)).asRuntimeException();
+            "%s: Compressed frame exceeds maximum frame size: %d. Bytes read: %d. ",
+            debugString, maxMessageSize, count)).asRuntimeException();
       }
     }
   }
