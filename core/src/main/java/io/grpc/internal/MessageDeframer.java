@@ -16,6 +16,7 @@
 
 package io.grpc.internal;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -82,27 +83,103 @@ public class MessageDeframer implements Closeable, Deframer {
     void deframeFailed(Throwable cause);
   }
 
-  private static final int STATE_HEADER = 1;
-  private static final int STATE_BODY = 2;
+  /**
+   * Represents all state about messages currently being deframed.
+   */
+  private MessageState messageState = new MessageState();
 
-  private State1 state1 = new State1();
-
-  private static final class State1 {
-    // Are we currently deframing.
-    boolean inDeframer;
+  private static final class MessageState {
+    // Are we currently delivering messages.
+    boolean delivering;
     // what part of the message are we decoding
-    int frameState = STATE_HEADER;
-    /** The current buffer being decoded.  It must be null before and after leaving the deframer. */
-    ReadableBuffer currentBuffer;
-    /** Data that has yet to be processed, even into a partial frame. */
-    private Deque<ReadableBuffer> unprocessed;
-  }
+    boolean deframingBody;
 
+    ByteBuffer headerBytes = ByteBuffer.allocate(HEADER_LENGTH);
 
+    /** The size of the message body.  Only valid while {@link #deframingBody} is true. */
+    int bodySizeBytes;
+    /** True if the body is compressed.  Only valid while {@link #deframingBody} is true. */
+    boolean isCompressed;
 
+    /** Only valid while delivering.  Must be 0 after delivery.  */
+    long numBytesRead;
 
-  private enum State {
-    HEADER, BODY
+    /** Data that is requested, but is not yet fully present.  */
+    Deque<ReadableBuffer> requested;
+
+    /** The number of bytes in {@link #requested} */
+    int requestedDataBytes;
+
+    /** Data that has yet to be processed.  Destination for buffers not yet requested by the app. */
+    Deque<ReadableBuffer> unrequested;
+
+    boolean hasUnrequestedData() {
+      return !(unrequested == null || unrequested.isEmpty());
+    }
+
+    boolean hasRequestedData() {
+      return !(requested == null || requested.isEmpty());
+    }
+
+    void addUnrequestedLast(ReadableBuffer b) {
+      if (b.readableBytes() == 0) {
+        throw new AssertionError(); // TODO(carl-mastrangelo): remove this
+      }
+      getUnrequested0().addLast(b);
+    }
+
+    void addUnrequestedFirst(ReadableBuffer b) {
+      if (b.readableBytes() == 0) {
+        throw new AssertionError(); // TODO(carl-mastrangelo): remove this
+      }
+      getUnrequested0().addFirst(b);
+    }
+
+    ReadableBuffer getUnrequestedFirst() {
+      return unrequested.getFirst();
+    }
+
+    void addRequestedLast(ReadableBuffer b) {
+      if (b.readableBytes() == 0) {
+        throw new AssertionError(); // TODO(carl-mastrangelo): remove this
+      }
+      getRequested0().addLast(b);
+      requestedDataBytes += b.readableBytes();
+    }
+
+    void addRequestedFirst(ReadableBuffer b) {
+      if (b.readableBytes() == 0) {
+        throw new AssertionError(); // TODO(carl-mastrangelo): remove this
+      }
+      getRequested0().addFirst(b);
+      requestedDataBytes += b.readableBytes();
+    }
+
+    ReadableBuffer getRequestedFirst() {
+      ReadableBuffer b = requested.getFirst();
+      requestedDataBytes -= b.readableBytes();
+      return b;
+    }
+
+    ReadableBuffer getRequestedLast() {
+      ReadableBuffer b = requested.getLast();
+      requestedDataBytes -= b.readableBytes();
+      return b;
+    }
+
+    private Deque<ReadableBuffer> getUnrequested0() {
+      if (unrequested == null) {
+        unrequested = new ArrayDeque<ReadableBuffer>(4);
+      }
+      return unrequested;
+    }
+
+    private Deque<ReadableBuffer> getRequested0() {
+      if (requested == null) {
+        requested = new ArrayDeque<ReadableBuffer>(4);
+      }
+      return requested;
+    }
   }
 
   private final Listener listener;
@@ -110,13 +187,7 @@ public class MessageDeframer implements Closeable, Deframer {
   private final StatsTraceContext statsTraceCtx;
   private final String debugString;
   private Decompressor decompressor;
-  private State state = State.HEADER;
-  private int requiredLength = HEADER_LENGTH;
-  private boolean compressedFlag;
-  private CompositeReadableBuffer nextFrame;
-  private CompositeReadableBuffer unprocessed = new CompositeReadableBuffer();
   private long pendingDeliveries;
-  private boolean inDelivery = false;
 
   private boolean closeWhenComplete = false;
   private volatile boolean stopDelivery = false;
@@ -156,7 +227,7 @@ public class MessageDeframer implements Closeable, Deframer {
       return;
     }
     pendingDeliveries += numMessages;
-    deliver();
+    deliver(messageState, null);
   }
 
   @Override
@@ -166,9 +237,10 @@ public class MessageDeframer implements Closeable, Deframer {
     boolean needToCloseData = true;
     try {
       if (!isClosedOrScheduledToClose()) {
-        needToCloseData = false;
-
-        deliver(data);
+        if (data.readableBytes() != 0) {
+          deliver(messageState, data);
+          needToCloseData = false;
+        }
       }
     } finally {
       if (needToCloseData) {
@@ -179,10 +251,14 @@ public class MessageDeframer implements Closeable, Deframer {
 
   @Override
   public void closeWhenComplete() {
-    if (unprocessed == null) {
+    if (isClosed()) {
       return;
     }
-    boolean stalled = unprocessed.readableBytes() == 0;
+    closeWhenCompleteInternal(messageState);
+  }
+
+  private void closeWhenCompleteInternal(MessageState state) {
+    boolean stalled = !state.hasUnrequestedData();
     if (stalled) {
       close();
     } else {
@@ -205,26 +281,40 @@ public class MessageDeframer implements Closeable, Deframer {
     if (isClosed()) {
       return;
     }
-    boolean hasPartialMessage = nextFrame != null && nextFrame.readableBytes() > 0;
     try {
-      if (unprocessed != null) {
-        unprocessed.close();
-      }
-      if (nextFrame != null) {
-        nextFrame.close();
-      }
+      closeInternal(messageState);
     } finally {
-      unprocessed = null;
-      nextFrame = null;
+      messageState = null;
     }
-    listener.deframerClosed(hasPartialMessage);
+  }
+
+  private void closeInternal(MessageState state) {
+    boolean hasPartialHeader =
+        !state.deframingBody && state.headerBytes.remaining() != HEADER_LENGTH;
+    boolean hasPartialBody = state.deframingBody && state.hasRequestedData();
+
+    ReadableBuffer bufferToClose;
+    if (state.hasUnrequestedData()) {
+      while ((bufferToClose = state.unrequested.poll()) != null) {
+        bufferToClose.close();
+      }
+      state.unrequested = null;
+    }
+    if (state.hasRequestedData()) {
+      while ((bufferToClose = state.requested.poll()) != null) {
+        bufferToClose.close();
+      }
+      state.requested = null;
+    }
+
+    listener.deframerClosed(hasPartialHeader || hasPartialBody);
   }
 
   /**
    * Indicates whether or not this deframer has been closed.
    */
   public boolean isClosed() {
-    return unprocessed == null;
+    return messageState == null;
   }
 
   /** Returns true if this deframer has already been closed or scheduled to close. */
@@ -232,56 +322,184 @@ public class MessageDeframer implements Closeable, Deframer {
     return isClosed() || closeWhenComplete;
   }
 
-  private void deliver(@Nullable ReadableBuffer buf) {
+  private void deliver(MessageState state, @Nullable ReadableBuffer buf) {
     // We can have reentrancy here when using a direct executor, triggered by calls to
     // request more messages. This is safe as we simply loop until pendingDelivers = 0
-    if (inDelivery) {
+    if (state.delivering) {
+      checkArgument(buf == null, "buf should be null: %s", buf);
       return;
     }
-    inDelivery = true;
+    assert state.numBytesRead == 0;
+    state.delivering = true;
     try {
-      deliverNonReentrant(buf);
+      deliverNonReentrant(state, buf);
     } finally {
-      inDelivery = false;
+      while (state.numBytesRead > Integer.MAX_VALUE) {
+        listener.bytesRead(Integer.MAX_VALUE);
+        state.numBytesRead -= Integer.MAX_VALUE;
+      }
+      listener.bytesRead((int) state.numBytesRead);
+      state.numBytesRead = 0;
+      state.delivering = false;
     }
   }
 
-  private Deque<ReadableBuffer> unprocessed1;
-  private Deque<ReadableBuffer> getUnprocessed() {
-    if (unprocessed1 == null) {
-      unprocessed1 = new ArrayDeque<ReadableBuffer>(4);
-    }
-    return unprocessed1;
-  }
+  /**
+   * Delivers messages to the application until there are no more requests, there is not enough
+   * data, or the deframer is closing down.  It is not resilient to reentrancy.
+   *
+   * @param state the current deframing state.
+   * @param inBuf the buffer to decode.  May be null if there is no incoming data.
+   */
+  private void deliverNonReentrant(MessageState state, @Nullable ReadableBuffer inBuf) {
+    ReadableBuffer current = maybeEnqueueBuffer(state, inBuf);
 
-  private ByteBuffer headerBytes = ByteBuffer.allocate(HEADER_LENGTH);
-
-  private void deliverNonReentrant(@Nullable ReadableBuffer inBuf) {
-    ReadableBuffer buf = inBuf != null ? inBuf : getUnprocessed().getFirst();
-    while (!stopDelivery && pendingDeliveries > 0 && buf != null) {
-      if (state == State.HEADER) {
-        if (headerBytes.remaining() == HEADER_LENGTH && buf.readableBytes() >= HEADER_LENGTH) {
-          // fast path
-          int flags = buf.readUnsignedByte();
-          int length = buf.readInt();
-          handlerHeader0(flags, length);
+    boolean currentEmpty = current == null || current.readableBytes() == 0;
+    while (!stopDelivery && pendingDeliveries > 0) {
+      if (currentEmpty) {
+        if (state.hasRequestedData()) {
+          current = state.getRequestedFirst();
+        } else if (state.hasUnrequestedData()) {
+          current = state.getUnrequestedFirst();
         } else {
-          slowReadHeader(buf);
+          break;
         }
       }
+      boolean madeDelivery = deliverSingleBuffer(state, current);
+      if (madeDelivery) {
+        pendingDeliveries--;
+      }
+      if ((currentEmpty = current.readableBytes() == 0)) {
+        current.close();
+        current = null;
+      } else if (!madeDelivery) {
+        break;
+      }
     }
+
+    // If there is left over data, put it on the front of the appropriate queue.
+    if (!currentEmpty) {
+      if (pendingDeliveries > 0) {
+        state.addRequestedFirst(current);
+      } else {
+        state.addUnrequestedFirst(current);
+      }
+    } else if (current != null) {
+      current.close();
+    }
+
     if (stopDelivery) {
       close();
       return;
     }
-    boolean stalled = unprocessed1 == null || getUnprocessed().isEmpty();
+    /*
+     * We are stalled when there are no more bytes to process. This allows delivering errors as
+     * soon as the buffered input has been consumed, independent of whether the application
+     * has requested another message.  At this point in the function, either all frames have been
+     * delivered, or unprocessed is empty.  If there is a partial message, it will be inside next
+     * state.requested and not in state.unrequested.  If there is extra data but no pending
+     * deliveries, it will be in state.unrequested.
+     */
+    boolean stalled = !state.hasUnrequestedData();
     if (closeWhenComplete && stalled) {
       close();
     }
   }
 
-  private ReadableBuffer slowReadHeader(ReadableBuffer current) {
-    while (headerBytes.remaining() != 0 && current.readableBytes() > 0) {
+  /**
+   * Either enqueues the buffer into the correct queue, or returns it for immediate use.
+   * @return the inputted buffer if it was not enqueued, else null.
+   */
+  @Nullable
+  private ReadableBuffer maybeEnqueueBuffer(MessageState state, @Nullable ReadableBuffer inBuf) {
+    if (inBuf != null) {
+      if (state.hasUnrequestedData() || pendingDeliveries == 0) {
+        // If there is already unrequested data, just tack it on.
+        state.addUnrequestedLast(inBuf);
+      } else if (state.hasRequestedData()) {
+        // If there is already requested data, we know there was not enough last time, and that
+        // there is at least one outstanding request.
+        assert pendingDeliveries > 0;
+        state.addRequestedLast(inBuf);
+      } else {
+        // There is at least one pending delivery and there is neither requested or unrequested
+        // data.  We should process the data inline.
+        return inBuf;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Delivers up to one message given the inputted buffer.
+   *
+   * @return true if a message was delivered.
+   */
+  private boolean deliverSingleBuffer(MessageState state, ReadableBuffer buf) {
+    assert buf != null;
+    assert pendingDeliveries > 0;
+    assert !stopDelivery;
+    // TODO(carl-mastrangelo): report overflow
+
+    if (!state.deframingBody) {
+      if (state.headerBytes.remaining() == HEADER_LENGTH
+          && buf.readableBytes() >= HEADER_LENGTH) {
+        int flags = buf.readUnsignedByte();
+        int size = buf.readInt();
+        handleHeader(state, flags, size);
+        state.numBytesRead += HEADER_LENGTH;
+      } else {
+        slowReadHeader(state, buf);
+      }
+    }
+    if (state.deframingBody) {
+      if (state.bodySizeBytes <= buf.readableBytes() + state.requestedDataBytes) {
+        // TODO(carl-mastrangelo): Use proper slicing and avoid this needless copy.
+        ReadableBuffer dst;
+        if (buf.readableBytes() >= state.bodySizeBytes) {
+          dst = buf.readBytes(state.bodySizeBytes);
+          // push the remaining back into requested.  The outer code will push it to the correct
+          // place.
+          state.addRequestedFirst(buf);
+        } else if (buf.readableBytes() == state.bodySizeBytes) {
+          dst = buf.readBytes(state.bodySizeBytes); // Slice to "consume" the data
+        } else {
+          CompositeReadableBuffer cdst = new CompositeReadableBuffer();
+          dst = cdst;
+          int bytesRemaining = state.bodySizeBytes;
+          do {
+            if (buf.readableBytes() < bytesRemaining) {
+              cdst.addBuffer(buf);
+              bytesRemaining -= buf.readableBytes();
+            } else if (buf.readableBytes() == bytesRemaining) {
+              cdst.addBuffer(buf);
+              bytesRemaining = 0;
+              break;
+            } else {
+              cdst.addBuffer(buf.readBytes(bytesRemaining));
+              bytesRemaining = 0;
+              state.addRequestedFirst(buf);
+              break;
+            }
+          } while ((buf = state.getRequestedFirst()) != null);
+          assert bytesRemaining == 0;
+        }
+        state.numBytesRead += dst.readableBytes();
+        statsTraceCtx.inboundWireSize(dst.readableBytes());
+        statsTraceCtx.inboundUncompressedSize(dst.readableBytes());
+        listener.messagesAvailable(
+            new SingleMessageProducer(ReadableBuffers.openStream(dst, true)));
+
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private int slowReadHeader(MessageState state, ReadableBuffer current) {
+    /*
+    assert !state.deframingBody;
+    while (state.headerBytes.remaining() != 0 && current.readableBytes() > 0) {
       headerBytes.put((byte) current.readUnsignedByte());
     }
 
@@ -300,147 +518,39 @@ public class MessageDeframer implements Closeable, Deframer {
     }
 
     return current;
+    */
+    return 0;
   }
 
-  private void handlerHeader0(int flags, int length) {
+  private void handleHeader(MessageState state, int flags, int length) {
     if ((flags & RESERVED_MASK) != 0) {
       throw Status.INTERNAL.withDescription(
           debugString + ": Frame header malformed: reserved bits not zero")
           .asRuntimeException();
     }
-    compressedFlag = (flags & COMPRESSED_FLAG_MASK) != 0;
 
     // Update the required length to include the length of the frame.
-    requiredLength = length;
-    if (requiredLength < 0 || requiredLength > maxInboundMessageSize) {
+    if (length < 0 || length > maxInboundMessageSize) {
       throw Status.RESOURCE_EXHAUSTED.withDescription(
-          String.format("%s: Frame size %d exceeds maximum: %d. ",
-              debugString, requiredLength, maxInboundMessageSize))
+          String.format("%s: Frame size %d exceeds maximum: %d.",
+              debugString, length, maxInboundMessageSize))
           .asRuntimeException();
     }
 
     statsTraceCtx.inboundMessage();
-    // Continue reading the frame body.
-    state = State.BODY;
+
+    state.bodySizeBytes = length;
+    state.isCompressed = (flags & COMPRESSED_FLAG_MASK) != 0;
+    state.deframingBody = true;
   }
 
+  private void handleBody(MessageState state) {
 
-  /**
-   * Reads and delivers as many messages to the listener as possible.
-   */
-  private void deliver() {
-    // We can have reentrancy here when using a direct executor, triggered by calls to
-    // request more messages. This is safe as we simply loop until pendingDelivers = 0
-    if (inDelivery) {
-      return;
-    }
-    inDelivery = true;
-    try {
-      // Process the uncompressed bytes.
-      while (!stopDelivery && pendingDeliveries > 0 && readRequiredBytes()) {
-        switch (state) {
-          case HEADER:
-            processHeader();
-            break;
-          case BODY:
-            // Read the body and deliver the message.
-            processBody();
-
-            // Since we've delivered a message, decrement the number of pending
-            // deliveries remaining.
-            pendingDeliveries--;
-            break;
-          default:
-            throw new AssertionError("Invalid state: " + state);
-        }
-      }
-
-      if (stopDelivery) {
-        close();
-        return;
-      }
-
-      /*
-       * We are stalled when there are no more bytes to process. This allows delivering errors as
-       * soon as the buffered input has been consumed, independent of whether the application
-       * has requested another message.  At this point in the function, either all frames have been
-       * delivered, or unprocessed is empty.  If there is a partial message, it will be inside next
-       * frame and not in unprocessed.  If there is extra data but no pending deliveries, it will
-       * be in unprocessed.
-       */
-      boolean stalled = unprocessed.readableBytes() == 0;
-      if (closeWhenComplete && stalled) {
-        close();
-      }
-    } finally {
-      inDelivery = false;
-    }
   }
-
-  /**
-   * Attempts to read the required bytes into nextFrame.
-   *
-   * @return {@code true} if all of the required bytes have been read.
-   */
-  private boolean readRequiredBytes() {
-    int totalBytesRead = 0;
-    try {
-      if (nextFrame == null) {
-        nextFrame = new CompositeReadableBuffer();
-      }
-
-      // Read until the buffer contains all the required bytes.
-      int missingBytes;
-      while ((missingBytes = requiredLength - nextFrame.readableBytes()) > 0) {
-        if (unprocessed.readableBytes() == 0) {
-          // No more data is available.
-          return false;
-        }
-        int toRead = Math.min(missingBytes, unprocessed.readableBytes());
-        totalBytesRead += toRead;
-        nextFrame.addBuffer(unprocessed.readBytes(toRead));
-      }
-      return true;
-    } finally {
-      if (totalBytesRead > 0) {
-        listener.bytesRead(totalBytesRead);
-        if (state == State.BODY) {
-          statsTraceCtx.inboundWireSize(totalBytesRead);
-        }
-      }
-    }
-  }
-
-  /**
-   * Processes the GRPC compression header which is composed of the compression flag and the outer
-   * frame length.
-   */
-  private void processHeader() {
-    int type = nextFrame.readUnsignedByte();
-    if ((type & RESERVED_MASK) != 0) {
-      throw Status.INTERNAL.withDescription(
-          debugString + ": Frame header malformed: reserved bits not zero")
-          .asRuntimeException();
-    }
-    compressedFlag = (type & COMPRESSED_FLAG_MASK) != 0;
-
-    // Update the required length to include the length of the frame.
-    requiredLength = nextFrame.readInt();
-    if (requiredLength < 0 || requiredLength > maxInboundMessageSize) {
-      throw Status.RESOURCE_EXHAUSTED.withDescription(
-          String.format("%s: Frame size %d exceeds maximum: %d. ",
-              debugString, requiredLength, maxInboundMessageSize))
-          .asRuntimeException();
-    }
-
-    statsTraceCtx.inboundMessage();
-    // Continue reading the frame body.
-    state = State.BODY;
-  }
-
   /**
    * Processes the GRPC message body, which depending on frame header flags may be compressed.
    */
+  /*
   private void processBody() {
     InputStream stream = compressedFlag ? getCompressedBody() : getUncompressedBody();
     nextFrame = null;
@@ -451,12 +561,16 @@ public class MessageDeframer implements Closeable, Deframer {
     requiredLength = HEADER_LENGTH;
   }
 
-  private InputStream getUncompressedBody() {
-    statsTraceCtx.inboundUncompressedSize(nextFrame.readableBytes());
+  private InputStream getUncompressedBody(MessageState state, ReadableBuffer current) {
+    statsTraceCtx.inboundUncompressedSize(state.bodySizeBytes);
+    CompositeReadableBuffer dst = new CompositeReadableBuffer();
+    if (current.readableBytes() <= state.bodySizeBytes) {
+      dst.addBuffer();
+    }
     return ReadableBuffers.openStream(nextFrame, true);
   }
 
-  private InputStream getCompressedBody() {
+  private InputStream getCompressedBody(MessageState state, ReadableBuffer current) {
     if (decompressor == Codec.Identity.NONE) {
       throw Status.INTERNAL.withDescription(
           debugString + ": Can't decode compressed frame as compression not configured.")
@@ -473,7 +587,7 @@ public class MessageDeframer implements Closeable, Deframer {
       throw new RuntimeException(e);
     }
   }
-
+*/
   /**
    * An {@link InputStream} that enforces the {@link #maxMessageSize} limit for compressed frames.
    */
