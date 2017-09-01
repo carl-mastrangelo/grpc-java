@@ -355,6 +355,7 @@ public class MessageDeframer implements Closeable, Deframer {
     ReadableBuffer current = maybeEnqueueBuffer(state, inBuf);
 
     boolean currentEmpty = current == null || current.readableBytes() == 0;
+    boolean madeDelivery;
     while (!stopDelivery && pendingDeliveries > 0) {
       if (currentEmpty) {
         if (state.hasRequestedData()) {
@@ -365,8 +366,7 @@ public class MessageDeframer implements Closeable, Deframer {
           break;
         }
       }
-      boolean madeDelivery = deliverSingleBuffer(state, current);
-      if (madeDelivery) {
+      if ((madeDelivery = deliverSingleBuffer(state, current))) {
         pendingDeliveries--;
       }
       if ((currentEmpty = current.readableBytes() == 0)) {
@@ -456,7 +456,7 @@ public class MessageDeframer implements Closeable, Deframer {
       if (state.bodySizeBytes <= buf.readableBytes() + state.requestedDataBytes) {
         // TODO(carl-mastrangelo): Use proper slicing and avoid this needless copy.
         ReadableBuffer dst;
-        if (buf.readableBytes() >= state.bodySizeBytes) {
+        if (buf.readableBytes() > state.bodySizeBytes) {
           dst = buf.readBytes(state.bodySizeBytes);
           // push the remaining back into requested.  The outer code will push it to the correct
           // place.
@@ -469,6 +469,7 @@ public class MessageDeframer implements Closeable, Deframer {
           int bytesRemaining = state.bodySizeBytes;
           do {
             if (buf.readableBytes() < bytesRemaining) {
+              int toRead =
               cdst.addBuffer(buf);
               bytesRemaining -= buf.readableBytes();
             } else if (buf.readableBytes() == bytesRemaining) {
