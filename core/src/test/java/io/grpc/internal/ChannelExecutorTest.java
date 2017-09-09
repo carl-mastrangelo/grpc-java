@@ -16,12 +16,16 @@
 
 package io.grpc.internal;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Before;
@@ -153,5 +157,66 @@ public class ChannelExecutorTest {
     inOrder.verify(task1).run();
     inOrder.verify(task2).run();
     inOrder.verify(task3).run();
+  }
+
+  @Test
+  public void allTasksExecute() throws Exception {
+    final class Counter {
+      long count;
+    }
+    final Counter counter = new Counter();
+    int threads = 8;
+    final long rounds = 1000000;
+    ExecutorService es = Executors.newFixedThreadPool(threads);
+    for (int i = 0; i < threads - 1; i++) {
+      es.execute(new Runnable() {
+
+        @Override
+        public void run() {
+          for (int k = 0; k < rounds; k++) {
+            int sus = ThreadLocalRandom.current().nextInt(4);
+            for (int m = 0; m < sus; m++) {
+              executor.suspend();
+            }
+            while (sus != 0) {
+              if (ThreadLocalRandom.current().nextInt(4) == 0) {
+                executor.suspend();
+                sus++;
+              } else {
+                executor.resume();
+                sus--;
+              }
+            }
+            executor.execute(new Runnable() {
+              @Override
+              public void run() {
+                counter.count++;
+              }
+            });
+          }
+        }
+      });
+    }
+    es.execute(new Runnable() {
+      @Override
+      public void run() {
+        for (int k = 0; k < rounds; k++) {
+          executor.execute(new Runnable() {
+            @Override
+            public void run() {
+              counter.count++;
+            }
+          });
+          // Once in a while, cut to the front of the line.
+          if (ThreadLocalRandom.current().nextInt(128) == 0) {
+            executor.forceDrain();
+          }
+        }
+      }
+    });
+    es.shutdown();
+    assertTrue(es.awaitTermination(20, TimeUnit.SECONDS));
+
+    assertEquals(threads * rounds, counter.count);
   }
 }
