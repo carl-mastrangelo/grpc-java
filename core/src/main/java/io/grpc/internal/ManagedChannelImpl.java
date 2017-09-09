@@ -52,11 +52,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -160,21 +158,17 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
   //   2e nameResolver <- null
   // 3. All subchannels and OOB channels terminated: Channel considered terminated
 
-  private final AtomicBoolean shutdown = new AtomicBoolean(false);
   // Must only be mutated and read from channelExecutor
   private boolean shutdownNowed;
-  // Must be mutated from channelExecutor
-  private volatile boolean terminating;
-  // Must be mutated from channelExecutor
-  private volatile boolean terminated;
-  private final CountDownLatch terminatedLatch = new CountDownLatch(1);
+
+  private final Terminator terminator = Terminator.newTerminator(logId.toString());
 
   // Called from channelExecutor
   private final ManagedClientTransport.Listener delayedTransportListener =
       new ManagedClientTransport.Listener() {
         @Override
         public void transportShutdown(Status s) {
-          checkState(shutdown.get(), "Channel must have been shut down");
+          checkState(isShutdown(), "Channel must have been shut down");
         }
 
         @Override
@@ -189,8 +183,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
 
         @Override
         public void transportTerminated() {
-          checkState(shutdown.get(), "Channel must have been shut down");
-          terminating = true;
+          terminator.startTerminate();
           if (lbHelper != null) {
             lbHelper.lb.shutdown();
             lbHelper = null;
@@ -230,7 +223,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
 
         @Override
         void handleNotInUse() {
-          if (shutdown.get()) {
+          if (isShutdown()) {
             return;
           }
           rescheduleIdleTimer();
@@ -278,7 +271,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
    */
   @VisibleForTesting
   void exitIdleMode() {
-    if (shutdown.get()) {
+    if (isShutdown()) {
       return;
     }
     if (inUseStateAggregator.isInUse()) {
@@ -336,7 +329,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
     @Override
     public ClientTransport get(PickSubchannelArgs args) {
       SubchannelPicker pickerCopy = subchannelPicker;
-      if (shutdown.get()) {
+      if (isShutdown()) {
         // If channel is shut down, delayedTransport is also shut down which will fail the stream
         // properly.
         return delayedTransport;
@@ -461,7 +454,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
   @Override
   public ManagedChannelImpl shutdown() {
     log.log(Level.FINE, "[{0}] shutdown() called", getLogId());
-    if (!shutdown.compareAndSet(false, true)) {
+    if (!terminator.shutdownIdempotent()) {
       return this;
     }
 
@@ -514,17 +507,17 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
 
   @Override
   public boolean isShutdown() {
-    return shutdown.get();
+    return terminator.isShutdown();
   }
 
   @Override
   public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-    return terminatedLatch.await(timeout, unit);
+    return terminator.awaitTermination(timeout, unit);
   }
 
   @Override
   public boolean isTerminated() {
-    return terminated;
+    return terminator.isTerminated();
   }
 
   /*
@@ -554,7 +547,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
           executor,
           callOptions,
           transportProvider,
-          terminated ? null : transportFactory.getScheduledExecutorService())
+          terminator.isTerminated() ? null : transportFactory.getScheduledExecutorService())
               .setDecompressorRegistry(decompressorRegistry)
               .setCompressorRegistry(compressorRegistry);
     }
@@ -571,13 +564,12 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
    */
   // Must be run from channelExecutor
   private void maybeTerminateChannel() {
-    if (terminated) {
+    if (isTerminated()) {
       return;
     }
-    if (shutdown.get() && subchannels.isEmpty() && oobChannels.isEmpty()) {
+    if (isShutdown() && subchannels.isEmpty() && oobChannels.isEmpty()) {
       log.log(Level.FINE, "[{0}] Terminated", getLogId());
-      terminated = true;
-      terminatedLatch.countDown();
+      terminator.finishTerminate();
       executorPool.returnObject(executor);
       // Release the transport factory so that it can deallocate any resources.
       transportFactory.close();
@@ -624,7 +616,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
       checkNotNull(addressGroup, "addressGroup");
       checkNotNull(attrs, "attrs");
       // TODO(ejona): can we be even stricter? Like loadBalancer == null?
-      checkState(!terminated, "Channel is terminated");
+      checkState(!isTerminated(), "Channel is terminated");
       final SubchannelImpl subchannel = new SubchannelImpl(attrs);
       final InternalSubchannel internalSubchannel = new InternalSubchannel(
             addressGroup, authority(), userAgent, backoffPolicyProvider, transportFactory,
@@ -661,7 +653,8 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
       runSerialized(new Runnable() {
           @Override
           public void run() {
-            if (terminating) {
+            // TODO(carl-mastrangelo): consolidate these two checks to avoid two volatile reads
+            if (terminator.isTerminating()) {
               // Because runSerialized() doesn't guarantee the runnable has been executed upon when
               // returning, the subchannel may still be returned to the balancer without being
               // shutdown even if "terminating" is already true.  The subchannel will not be used in
@@ -669,7 +662,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
               // true, and no more requests will be sent to balancer beyond this point.
               internalSubchannel.shutdown(SHUTDOWN_STATUS);
             }
-            if (!terminated) {
+            if (!isTerminated()) {
               // If channel has not terminated, it will track the subchannel and block termination
               // for it.
               subchannels.add(internalSubchannel);
@@ -714,7 +707,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
     @Override
     public ManagedChannel createOobChannel(EquivalentAddressGroup addressGroup, String authority) {
       // TODO(ejona): can we be even stricter? Like terminating?
-      checkState(!terminated, "Channel is terminated");
+      checkState(!isTerminated(), "Channel is terminated");
       final OobChannel oobChannel = new OobChannel(
           authority, oobExecutorPool, transportFactory.getScheduledExecutorService(),
           channelExecutor);
@@ -739,10 +732,11 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
       runSerialized(new Runnable() {
           @Override
           public void run() {
-            if (terminating) {
+            // TODO(carl-mastrangelo): consolidate these two checks to avoid two volatile reads.
+            if (terminator.isTerminating()) {
               oobChannel.shutdown();
             }
-            if (!terminated) {
+            if (isTerminated()) {
               // If channel has not terminated, it will track the subchannel and block termination
               // for it.
               oobChannels.add(internalSubchannel);
@@ -828,7 +822,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
       helper.runSerialized(new Runnable() {
           @Override
           public void run() {
-            if (terminated) {
+            if (isTerminated()) {
               return;
             }
             try {
@@ -853,7 +847,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
       channelExecutor.executeLater(new Runnable() {
           @Override
           public void run() {
-            if (terminated) {
+            if (isTerminated()) {
               return;
             }
             balancer.handleNameResolutionError(error);
@@ -886,7 +880,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
     public void shutdown() {
       synchronized (shutdownLock) {
         if (shutdownRequested) {
-          if (terminating && delayedShutdownTask != null) {
+          if (terminator.isTerminating() && delayedShutdownTask != null) {
             // shutdown() was previously called when terminating == false, thus a delayed shutdown()
             // was scheduled.  Now since terminating == true, We should expedite the shutdown.
             delayedShutdownTask.cancel(false);
@@ -906,7 +900,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
         //
         // TODO(zhangkun83): consider a better approach
         // (https://github.com/grpc/grpc-java/issues/2562).
-        if (!terminating) {
+        if (!terminator.isTerminating()) {
           delayedShutdownTask = transportFactory.getScheduledExecutorService().schedule(
               new LogExceptionRunnable(
                   new Runnable() {
