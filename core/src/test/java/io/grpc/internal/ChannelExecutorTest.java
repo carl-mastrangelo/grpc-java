@@ -39,7 +39,7 @@ import org.mockito.stubbing.Answer;
  */
 @RunWith(JUnit4.class)
 public class ChannelExecutorTest {
-  private final ChannelExecutor executor = new ChannelExecutor();
+  private final ThreadlessExec executor = new ThreadlessExec();
 
   @Mock
   private Runnable task1;
@@ -56,17 +56,19 @@ public class ChannelExecutorTest {
 
   @Test
   public void singleThread() {
-    executor.executeLater(task1);
-    executor.executeLater(task2);
+
+    executor.execute(task1);
+    executor.execute(task2);
     InOrder inOrder = inOrder(task1, task2, task3);
     inOrder.verifyNoMoreInteractions();
-    executor.drain();
+    executor.resume();
     inOrder.verify(task1).run();
     inOrder.verify(task2).run();
 
-    executor.executeLater(task3);
+    executor.suspend();
+    executor.execute(task3);
     inOrder.verifyNoMoreInteractions();
-    executor.drain();
+    executor.resume();
     inOrder.verify(task3).run();
   }
 
@@ -106,19 +108,21 @@ public class ChannelExecutorTest {
     Thread sideThread = new Thread() {
         @Override
         public void run() {
-          executor.executeLater(task1);
+          executor.suspend();
+          executor.execute(task1);
           task1Added.countDown();
-          executor.drain();
+          executor.resume();
           sideThreadDone.countDown();
         }
       };
     sideThread.start();
 
     assertTrue(task1Added.await(5, TimeUnit.SECONDS));
-    executor.executeLater(task2);
+    executor.suspend();
+    executor.execute(task2);
     assertTrue(task1Running.await(5, TimeUnit.SECONDS));
     // This will do nothing because task1 is running until task1Proceed is set
-    executor.drain();
+    executor.resume();
 
     inOrder.verify(task1).run();
     inOrder.verifyNoMoreInteractions();
@@ -141,10 +145,11 @@ public class ChannelExecutorTest {
           throw new RuntimeException("Simulated");
         }
       }).when(task2).run();
-    executor.executeLater(task1);
-    executor.executeLater(task2);
-    executor.executeLater(task3);
-    executor.drain();
+    executor.suspend();
+    executor.execute(task1);
+    executor.execute(task2);
+    executor.execute(task3);
+    executor.resume();
     inOrder.verify(task1).run();
     inOrder.verify(task2).run();
     inOrder.verify(task3).run();
