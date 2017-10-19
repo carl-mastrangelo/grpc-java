@@ -813,59 +813,7 @@ public final class ManagedChannelImpl extends ManagedChannel implements WithLogI
   }
 
   private class NameResolverListenerImpl implements NameResolver.Listener {
-    final LoadBalancer balancer;
-    final LoadBalancer.Helper helper;
 
-    NameResolverListenerImpl(LbHelperImpl helperImpl) {
-      this.balancer = helperImpl.lb;
-      this.helper = helperImpl;
-    }
-
-    @Override
-    public void onAddresses(final List<EquivalentAddressGroup> servers, final Attributes config) {
-      if (servers.isEmpty()) {
-        onError(Status.UNAVAILABLE.withDescription("NameResolver returned an empty list"));
-        return;
-      }
-      logger.log(Level.FINE, "[{0}] resolved address: {1}, config={2}",
-          new Object[] {getLogId(), servers, config});
-      helper.runSerialized(new Runnable() {
-          @Override
-          public void run() {
-            // Call LB only if it's not shutdown.  If LB is shutdown, lbHelper won't match.
-            if (NameResolverListenerImpl.this.helper != ManagedChannelImpl.this.lbHelper) {
-              return;
-            }
-            try {
-              balancer.handleResolvedAddressGroups(servers, config);
-            } catch (Throwable e) {
-              logger.log(
-                  Level.WARNING, "[" + getLogId() + "] Unexpected exception from LoadBalancer", e);
-              // It must be a bug! Push the exception back to LoadBalancer in the hope that it may
-              // be propagated to the application.
-              balancer.handleNameResolutionError(Status.INTERNAL.withCause(e)
-                  .withDescription("Thrown from handleResolvedAddresses(): " + e));
-            }
-          }
-        });
-    }
-
-    @Override
-    public void onError(final Status error) {
-      checkArgument(!error.isOk(), "the error status must not be OK");
-      logger.log(Level.WARNING, "[{0}] Failed to resolve name. status={1}",
-          new Object[] {getLogId(), error});
-      channelExecutor.executeLater(new Runnable() {
-          @Override
-          public void run() {
-            // Call LB only if it's not shutdown.  If LB is shutdown, lbHelper won't match.
-            if (NameResolverListenerImpl.this.helper != ManagedChannelImpl.this.lbHelper) {
-              return;
-            }
-            balancer.handleNameResolutionError(error);
-          }
-        }).drain();
-    }
   }
 
   private final class SubchannelImpl extends AbstractSubchannel {
