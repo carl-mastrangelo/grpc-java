@@ -19,12 +19,12 @@ package io.grpc.internal;
 import static com.google.common.base.Charsets.UTF_8;
 
 import com.google.common.base.Preconditions;
-import io.grpc.KnownLength;
+import io.grpc.BufferBacked;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.util.Collections;
 
 /**
  * Utility methods for creating {@link ReadableBuffer} instances.
@@ -66,24 +66,18 @@ public final class ReadableBuffers {
   }
 
   /**
-   * Reads an entire {@link ReadableBuffer} to a new array. After calling this method, the buffer
-   * will contain no readable bytes.
-   */
-  public static byte[] readArray(ReadableBuffer buffer) {
-    Preconditions.checkNotNull(buffer, "buffer");
-    int length = buffer.readableBytes();
-    byte[] bytes = new byte[length];
-    buffer.readBytes(bytes, 0, length);
-    return bytes;
-  }
-
-  /**
    * Reads the entire {@link ReadableBuffer} to a new {@link String} with the given charset.
    */
   public static String readAsString(ReadableBuffer buffer, Charset charset) {
     Preconditions.checkNotNull(charset, "charset");
-    byte[] bytes = readArray(buffer);
-    return new String(bytes, charset);
+    int bytesToRead = buffer.readableBytes();
+
+    ByteBuffer scratchBuffer = ByteBuffer.allocate(bytesToRead);
+    for (ByteBuffer buf : buffer.readonlyBuffers()) {
+      scratchBuffer.put(buf);
+    }
+    buffer.skipBytes(bytesToRead);
+    return new String(scratchBuffer.array(), charset);
   }
 
   /**
@@ -154,54 +148,15 @@ public final class ReadableBuffers {
     }
 
     @Override
+    public Iterable<ByteBuffer> readonlyBuffers() {
+      return Collections.singletonList(
+          ByteBuffer.wrap(bytes, offset, readableBytes()).asReadOnlyBuffer());
+    }
+
+    @Override
     public int readUnsignedByte() {
       checkReadable(1);
       return bytes[offset++] & 0xFF;
-    }
-
-    @Override
-    public void readBytes(byte[] dest, int destIndex, int length) {
-      System.arraycopy(bytes, offset, dest, destIndex, length);
-      offset += length;
-    }
-
-    @Override
-    public void readBytes(ByteBuffer dest) {
-      Preconditions.checkNotNull(dest, "dest");
-      int length = dest.remaining();
-      checkReadable(length);
-      dest.put(bytes, offset, length);
-      offset += length;
-    }
-
-    @Override
-    public void readBytes(OutputStream dest, int length) throws IOException {
-      checkReadable(length);
-      dest.write(bytes, offset, length);
-      offset += length;
-    }
-
-    @Override
-    public ByteArrayWrapper readBytes(int length) {
-      checkReadable(length);
-      int originalOffset = offset;
-      offset += length;
-      return new ByteArrayWrapper(bytes, originalOffset, length);
-    }
-
-    @Override
-    public boolean hasArray() {
-      return true;
-    }
-
-    @Override
-    public byte[] array() {
-      return bytes;
-    }
-
-    @Override
-    public int arrayOffset() {
-      return offset;
     }
   }
 
@@ -233,69 +188,15 @@ public final class ReadableBuffers {
     }
 
     @Override
-    public void readBytes(byte[] dest, int destOffset, int length) {
-      checkReadable(length);
-      bytes.get(dest, destOffset, length);
-    }
-
-    @Override
-    public void readBytes(ByteBuffer dest) {
-      Preconditions.checkNotNull(dest, "dest");
-      int length = dest.remaining();
-      checkReadable(length);
-
-      // Change the limit so that only length bytes are available.
-      int prevLimit = bytes.limit();
-      bytes.limit(bytes.position() + length);
-
-      // Write the bytes and restore the original limit.
-      dest.put(bytes);
-      bytes.limit(prevLimit);
-    }
-
-    @Override
-    public void readBytes(OutputStream dest, int length) throws IOException {
-      checkReadable(length);
-      if (hasArray()) {
-        dest.write(array(), arrayOffset(), length);
-        bytes.position(bytes.position() + length);
-      } else {
-        // The buffer doesn't support array(). Copy the data to an intermediate buffer.
-        byte[] array = new byte[length];
-        bytes.get(array);
-        dest.write(array);
-      }
-    }
-
-    @Override
-    public ByteReadableBufferWrapper readBytes(int length) {
-      checkReadable(length);
-      ByteBuffer buffer = bytes.duplicate();
-      buffer.limit(bytes.position() + length);
-      bytes.position(bytes.position() + length);
-      return new ByteReadableBufferWrapper(buffer);
-    }
-
-    @Override
-    public boolean hasArray() {
-      return bytes.hasArray();
-    }
-
-    @Override
-    public byte[] array() {
-      return bytes.array();
-    }
-
-    @Override
-    public int arrayOffset() {
-      return bytes.arrayOffset() + bytes.position();
+    public Iterable<ByteBuffer> readonlyBuffers() {
+      return Collections.singletonList(bytes.asReadOnlyBuffer());
     }
   }
 
   /**
    * An {@link InputStream} that is backed by a {@link ReadableBuffer}.
    */
-  private static final class BufferInputStream extends InputStream implements KnownLength {
+  private static final class BufferInputStream extends InputStream implements BufferBacked {
     final ReadableBuffer buffer;
 
     public BufferInputStream(ReadableBuffer buffer) {
@@ -317,15 +218,28 @@ public final class ReadableBuffers {
     }
 
     @Override
-    public int read(byte[] dest, int destOffset, int length) throws IOException {
+    public int read(byte[] dest, int destOffset, final int length) throws IOException {
       if (buffer.readableBytes() == 0) {
         // EOF.
         return -1;
       }
 
-      length = Math.min(buffer.readableBytes(), length);
-      buffer.readBytes(dest, destOffset, length);
-      return length;
+      final int toRead = Math.min(buffer.readableBytes(), length);
+      int remaining = toRead;
+      for (ByteBuffer buf : readonlyBuffers()) {
+        int rem = Math.min(buf.remaining(), remaining);
+        buf.get(dest, destOffset, rem);
+        if ((remaining -= rem) <= 0) {
+          break;
+        }
+      }
+      buffer.skipBytes(toRead);
+      return toRead;
+    }
+
+    @Override
+    public Iterable<ByteBuffer> readonlyBuffers() {
+      return buffer.readonlyBuffers();
     }
   }
 

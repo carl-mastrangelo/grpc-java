@@ -350,7 +350,8 @@ public class MessageDeframer implements Closeable, Deframer {
           }
           int toRead = Math.min(missingBytes, unprocessed.readableBytes());
           totalBytesRead += toRead;
-          nextFrame.addBuffer(unprocessed.readBytes(toRead));
+          // FIXME
+          //nextFrame.addBuffer(unprocessed.readBytes(toRead));
         }
       }
       return true;

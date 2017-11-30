@@ -17,10 +17,13 @@
 package io.grpc.internal;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Collections;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -72,52 +75,10 @@ public class ForwardingReadableBufferTest {
   }
 
   @Test
-  public void readBytes() {
-    buffer.readBytes(null, 1, 2);
+  public void readonlyBuffers() {
+    when(delegate.readonlyBuffers()).thenReturn(Collections.<ByteBuffer>emptyList());
 
-    verify(delegate).readBytes(null, 1, 2);
-  }
-
-  @Test
-  public void readBytes_overload1() {
-    buffer.readBytes(null);
-
-    verify(delegate).readBytes(null);
-  }
-
-  @Test
-  public void readBytes_overload2() throws IOException {
-    buffer.readBytes(null, 1);
-
-    verify(delegate).readBytes(null, 1);
-  }
-
-  @Test
-  public void readBytes_overload3() {
-    buffer.readBytes(1);
-
-    verify(delegate).readBytes(1);
-  }
-
-  @Test
-  public void hasArray() {
-    when(delegate.hasArray()).thenReturn(true);
-
-    assertEquals(true, buffer.hasArray());
-  }
-
-  @Test
-  public void array() {
-    when(delegate.array()).thenReturn(null);
-
-    assertEquals(null, buffer.array());
-  }
-
-  @Test
-  public void arrayOffset() {
-    when(delegate.arrayOffset()).thenReturn(1);
-
-    assertEquals(1, buffer.arrayOffset());
+    assertFalse(buffer.readonlyBuffers().iterator().hasNext());
   }
 
   @Test

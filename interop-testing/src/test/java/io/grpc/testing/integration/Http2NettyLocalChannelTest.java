@@ -23,6 +23,7 @@ import io.grpc.netty.NettyServerBuilder;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalServerChannel;
+import java.util.concurrent.ForkJoinPool;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.runner.RunWith;
@@ -41,6 +42,7 @@ public class Http2NettyLocalChannelTest extends AbstractInteropTest {
         NettyServerBuilder
             .forAddress(new LocalAddress("in-process-1"))
             .flowControlWindow(65 * 1024)
+            .executor(ForkJoinPool.commonPool())
             .maxMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
             .channelType(LocalServerChannel.class));
   }
@@ -55,6 +57,7 @@ public class Http2NettyLocalChannelTest extends AbstractInteropTest {
   protected ManagedChannel createChannel() {
     NettyChannelBuilder builder = NettyChannelBuilder
         .forAddress(new LocalAddress("in-process-1"))
+        .executor(ForkJoinPool.commonPool())
         .negotiationType(NegotiationType.PLAINTEXT)
         .channelType(LocalChannel.class)
         .flowControlWindow(65 * 1024)

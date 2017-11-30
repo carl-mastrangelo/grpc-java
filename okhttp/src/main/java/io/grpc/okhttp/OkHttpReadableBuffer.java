@@ -22,9 +22,12 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 
 /**
  * A {@link ReadableBuffer} implementation that is backed by an {@link okio.Buffer}.
+ *
+ * FIXME: Make this final
  */
 class OkHttpReadableBuffer extends AbstractReadableBuffer {
   private final okio.Buffer buffer;
@@ -53,33 +56,8 @@ class OkHttpReadableBuffer extends AbstractReadableBuffer {
   }
 
   @Override
-  public void readBytes(byte[] dest, int destOffset, int length) {
-    while (length > 0) {
-      int bytesRead = buffer.read(dest, destOffset, length);
-      if (bytesRead == -1) {
-        throw new IndexOutOfBoundsException("EOF trying to read " + length + " bytes");
-      }
-      length -= bytesRead;
-      destOffset += bytesRead;
-    }
-  }
-
-  @Override
-  public void readBytes(ByteBuffer dest) {
-    // We are not using it.
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public void readBytes(OutputStream dest, int length) throws IOException {
-    buffer.writeTo(dest, length);
-  }
-
-  @Override
-  public ReadableBuffer readBytes(int length) {
-    okio.Buffer buf = new okio.Buffer();
-    buf.write(buffer, length);
-    return new OkHttpReadableBuffer(buf);
+  public Iterable<ByteBuffer> readonlyBuffers() {
+    return Collections.singletonList(buffer.snapshot().asByteBuffer());
   }
 
   @Override

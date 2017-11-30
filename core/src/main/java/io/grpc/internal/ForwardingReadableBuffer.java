@@ -61,38 +61,8 @@ public abstract class ForwardingReadableBuffer implements ReadableBuffer {
   }
 
   @Override
-  public void readBytes(byte[] dest, int destOffset, int length) {
-    buf.readBytes(dest, destOffset, length);
-  }
-
-  @Override
-  public void readBytes(ByteBuffer dest) {
-    buf.readBytes(dest);
-  }
-
-  @Override
-  public void readBytes(OutputStream dest, int length) throws IOException {
-    buf.readBytes(dest, length);
-  }
-
-  @Override
-  public ReadableBuffer readBytes(int length) {
-    return buf.readBytes(length);
-  }
-
-  @Override
-  public boolean hasArray() {
-    return buf.hasArray();
-  }
-
-  @Override
-  public byte[] array() {
-    return buf.array();
-  }
-
-  @Override
-  public int arrayOffset() {
-    return buf.arrayOffset();
+  public Iterable<ByteBuffer> readonlyBuffers() {
+    return buf.readonlyBuffers();
   }
 
   @Override

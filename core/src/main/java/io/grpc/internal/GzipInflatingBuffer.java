@@ -19,6 +19,7 @@ package io.grpc.internal;
 import static com.google.common.base.Preconditions.checkState;
 
 import java.io.Closeable;
+import java.nio.ByteBuffer;
 import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
@@ -98,11 +99,24 @@ class GzipInflatingBuffer implements Closeable {
       if (bytesToSkip > 0) {
         byte[] buf = new byte[512];
         int total = 0;
+
         while (total < bytesToSkip) {
           int toRead = Math.min(bytesToSkip - total, buf.length);
+
+          /*
+          int pos = 0;
+          for (ByteBuffer part : gzippedData.readonlyBuffers()) {
+            part.get(buf, pos, )
+          }
+          FIXME
+
+
           gzippedData.readBytes(buf, 0, toRead);
-          crc.update(buf, 0, toRead);
-          total += toRead;
+          */
+          throw new RuntimeException();
+
+          //crc.update(buf, 0, toRead);
+          //total += toRead;
         }
       }
 
@@ -447,7 +461,8 @@ class GzipInflatingBuffer implements Closeable {
     }
     inflaterInputStart = 0;
     inflaterInputEnd = bytesToAdd;
-    gzippedData.readBytes(inflaterInput, inflaterInputStart, bytesToAdd);
+    // FIXME
+    //gzippedData.readBytes(inflaterInput, inflaterInputStart, bytesToAdd);
     inflater.setInput(inflaterInput, inflaterInputStart, bytesToAdd);
     state = State.INFLATING;
     return true;
