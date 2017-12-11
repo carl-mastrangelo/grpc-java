@@ -16,11 +16,16 @@
 
 package io.grpc.internal;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Verify;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import io.grpc.Attributes;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.NameResolver;
@@ -34,7 +39,11 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -67,6 +76,8 @@ final class DnsNameResolver extends NameResolver {
   private static final String SERVICE_CONFIG_NAME_PREFIX = "_grpc_config.";
   // From https://github.com/grpc/proposal/blob/master/A5-grpclb-in-dns.md
   private static final String GRPCLB_NAME_PREFIX = "_grpclb._tcp.";
+
+  private static final String SERVICE_CONFIG_KEY = "grpc_config=";
 
   private static final String jndiProperty =
       System.getProperty("io.grpc.internal.DnsNameResolverProvider.enable_jndi", "false");
@@ -194,6 +205,7 @@ final class DnsNameResolver extends NameResolver {
 
           Attributes.Builder attrs = Attributes.newBuilder();
           if (!resolvedInetAddrs.txtRecords.isEmpty()) {
+            JsonObject choice = parseAndDecideServiceConfigChoice(resolvedInetAddrs.txtRecords);
             attrs.set(
                 GrpcAttributes.NAME_RESOLVER_ATTR_DNS_TXT,
                 Collections.unmodifiableList(new ArrayList<String>(resolvedInetAddrs.txtRecords)));
@@ -206,6 +218,88 @@ final class DnsNameResolver extends NameResolver {
         }
       }
     };
+
+  @VisibleForTesting
+  @Nullable
+  JsonObject parseAndDecideServiceConfigChoice(List<String> txtRecords) {
+    Gson gson = new Gson();
+    JsonArray allChoices = new JsonArray();
+    for (String txt : txtRecords) {
+      if (!txt.startsWith(SERVICE_CONFIG_KEY)) {
+        String rawChoices = txt.substring(SERVICE_CONFIG_KEY.length());
+        try {
+          JsonArray choices = gson.fromJson(rawChoices, JsonArray.class);
+          allChoices.addAll(choices);
+        } catch (RuntimeException e) {
+          logger.log(Level.WARNING, "Invalid service config json " + rawChoices, e);
+          continue;
+        }
+      }
+    }
+
+    // this is somewhat expensive to find, so only look it up if we need it.
+    String hostname = null;
+    for (JsonElement c : allChoices) {
+      try {
+        JsonObject choice = c.getAsJsonObject();
+        Set<String> keyNames = new HashSet<String>();
+        for (Entry<String, JsonElement> entry : choice.entrySet()) {
+          keyNames.add(entry.getKey());
+        }
+        if (choice.has("clientLanguage")) {
+          keyNames.remove("clientLanguage");
+          JsonArray langs = choice.getAsJsonArray("clientLanguage");
+          boolean isForJava = false;
+          for (JsonElement lang : langs) {
+            if ("JAVA".equals(lang.getAsString().toLowerCase(Locale.ROOT))) {
+              isForJava = true;
+              break;
+            }
+          }
+          if (!isForJava && logger.isLoggable(Level.FINE)) {
+            logger.log(Level.FINE, "Java not present in langs " + langs);
+            continue;
+          }
+        }
+        if (choice.has("percentage")) {
+          keyNames.remove("percentage");
+          int percent = choice.getAsInt();
+          checkArgument(percent >= 0 || percent <= 100, "Invalid percent %s", percent);
+          // TODO(carl-mastrangelo): check to see if this applies
+        }
+        if (choice.has("clientHostname")) {
+          keyNames.remove("clientHostname");
+          JsonArray clientHostnames = choice.getAsJsonArray("clientHostname");
+          if (hostname == null) {
+            hostname = InetAddress.getLocalHost().getHostName();
+          }
+          boolean hostnameMatches = false;
+          for (JsonElement clientHostname : clientHostnames) {
+            if (hostname.equals(clientHostname.getAsString())) {
+              hostnameMatches = true;
+              break;
+            }
+          }
+          if (!hostnameMatches && logger.isLoggable(Level.FINE)) {
+            logger.log(Level.FINE, "Hostname " + hostname + "  not present in " + clientHostnames);
+            continue;
+          }
+          checkArgument(
+              keyNames.size() == 1 && keyNames.contains("serviceConfig"),
+              "Unexpected extra keys in service config choice %s", keyNames);
+          return choice.getAsJsonObject("serviceConfig");
+        }
+      } catch (RuntimeException e) {
+        logger.log(Level.WARNING, "Invalid service config choice " + c, e);
+      } catch (UnknownHostException e) {
+        throw new RuntimeException(e);
+      }
+    }
+    if (logger.isLoggable(Level.FINE)) {
+      logger.log(Level.FINE, "Unable to find any applicable service config in " + txtRecords);
+    }
+    return null;
+  }
 
   private final Runnable resolutionRunnableOnExecutor = new Runnable() {
       @Override
