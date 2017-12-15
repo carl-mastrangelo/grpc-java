@@ -104,8 +104,8 @@ final class InteropTester extends AsyncTask<Void, Void, String> {
     if (useGet) {
       channelToUse = ClientInterceptors.intercept(channel, new SafeMethodChannelInterceptor());
     }
-    blockingStub = TestServiceGrpc.newBlockingStub(channelToUse);
-    asyncStub = TestServiceGrpc.newStub(channelToUse);
+    blockingStub = TestServiceGrpc.newBlockingStub(channelToUse).withWaitForReady();
+    asyncStub = TestServiceGrpc.newStub(channelToUse).withWaitForReady();
   }
 
   @Override
@@ -469,7 +469,9 @@ final class InteropTester extends AsyncTask<Void, Void, String> {
 
     final ArrayBlockingQueue<Object> queue = new ArrayBlockingQueue<Object>(10);
     ClientCall<StreamingOutputCallRequest, StreamingOutputCallResponse> call =
-        channel.newCall(TestServiceGrpc.getStreamingOutputCallMethod(), CallOptions.DEFAULT);
+        channel.newCall(
+            TestServiceGrpc.getStreamingOutputCallMethod(),
+            CallOptions.DEFAULT.withWaitForReady());
     call.start(new ClientCall.Listener<StreamingOutputCallResponse>() {
       @Override
       public void onHeaders(Metadata headers) {}
@@ -552,6 +554,7 @@ final class InteropTester extends AsyncTask<Void, Void, String> {
     request.responseParameters[0].intervalUs = 0;
     TestServiceGrpc.newBlockingStub(channel)
         .withDeadlineAfter(10, TimeUnit.SECONDS)
+        .withWaitForReady()
         .streamingOutputCall(request);
   }
 
@@ -559,6 +562,7 @@ final class InteropTester extends AsyncTask<Void, Void, String> {
     // warm up the channel and JVM
     blockingStub.emptyCall(new EmptyProtos.Empty());
     TestServiceGrpc.TestServiceBlockingStub stub = TestServiceGrpc.newBlockingStub(channel)
+        .withWaitForReady()
         .withDeadlineAfter(10, TimeUnit.MILLISECONDS);
     StreamingOutputCallRequest request = new StreamingOutputCallRequest();
     request.responseParameters = new ResponseParameters[1];
@@ -588,6 +592,7 @@ final class InteropTester extends AsyncTask<Void, Void, String> {
     StreamRecorder<StreamingOutputCallResponse> recorder = StreamRecorder.create();
     TestServiceGrpc.newStub(channel)
         .withDeadlineAfter(30, TimeUnit.MILLISECONDS)
+        .withWaitForReady()
         .streamingOutputCall(request, recorder);
     assertTrue(recorder.awaitCompletion(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS));
     assertCodeEquals(io.grpc.Status.DEADLINE_EXCEEDED,
@@ -661,7 +666,7 @@ final class InteropTester extends AsyncTask<Void, Void, String> {
   /** Sends an rpc to an unimplemented method on the server. */
   public void unimplementedMethod() {
     UnimplementedServiceGrpc.UnimplementedServiceBlockingStub stub =
-        UnimplementedServiceGrpc.newBlockingStub(channel);
+        UnimplementedServiceGrpc.newBlockingStub(channel).withWaitForReady();
     try {
       stub.unimplementedCall(new EmptyProtos.Empty());
       fail();
@@ -673,6 +678,7 @@ final class InteropTester extends AsyncTask<Void, Void, String> {
   /** Start a fullDuplexCall which the server will not respond, and verify the deadline expires. */
   public void timeoutOnSleepingServer() throws Exception {
     TestServiceGrpc.TestServiceStub stub = TestServiceGrpc.newStub(channel)
+        .withWaitForReady()
         .withDeadlineAfter(1, TimeUnit.MILLISECONDS);
     StreamRecorder<StreamingOutputCallResponse> recorder = StreamRecorder.create();
     StreamObserver<StreamingOutputCallRequest> requestObserver
