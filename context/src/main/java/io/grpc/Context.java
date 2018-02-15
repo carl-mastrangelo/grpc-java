@@ -100,9 +100,6 @@ public class Context {
 
   private static final Logger log = Logger.getLogger(Context.class.getName());
 
-  private static final PersistentHashArrayMappedTrie<Key<?>, Object> EMPTY_ENTRIES =
-      new PersistentHashArrayMappedTrie<Key<?>, Object>();
-
   static final AtomicLongArray withValueCounts;
   /**
    * Counts how many times a unique value added to the context.
@@ -164,7 +161,7 @@ public class Context {
    * <p>Never assume this is the default context for new threads, because {@link Storage} may define
    * a default context that is different from ROOT.
    */
-  public static final Context ROOT = new Context(null, EMPTY_ENTRIES);
+  public static final Context ROOT = new Context(null, new KeyValues());
 
   // Lazy-loaded storage. Delaying storage initialization until after class initialization makes it
   // much easier to avoid circular loading since there can still be references to Context as long as
@@ -238,14 +235,14 @@ public class Context {
   private ArrayList<ExecutableListener> listeners;
   private CancellationListener parentListener = new ParentListener();
   final CancellableContext cancellableAncestor;
-  final PersistentHashArrayMappedTrie<Key<?>, Object> keyValueEntries;
+  final KeyValues keyValueEntries;
   // The number parents between this context and the root context.
   final int generation;
 
   /**
    * Construct a context that cannot be cancelled and will not cascade cancellation from its parent.
    */
-  private Context(PersistentHashArrayMappedTrie<Key<?>, Object> keyValueEntries, int generation) {
+  private Context(KeyValues keyValueEntries, int generation) {
     cancellableAncestor = null;
     this.keyValueEntries = keyValueEntries;
     this.generation = generation;
@@ -256,7 +253,7 @@ public class Context {
    * Construct a context that cannot be cancelled but will cascade cancellation from its parent if
    * it is cancellable.
    */
-  private Context(Context parent, PersistentHashArrayMappedTrie<Key<?>, Object> keyValueEntries) {
+  private Context(Context parent, KeyValues keyValueEntries) {
     cancellableAncestor = cancellableAncestor(parent);
     this.keyValueEntries = keyValueEntries;
     this.generation = parent == null ? 0 : parent.generation + 1;
@@ -368,7 +365,7 @@ public class Context {
    *
    */
   public <V> Context withValue(Key<V> k1, V v1) {
-    PersistentHashArrayMappedTrie<Key<?>, Object> newKeyValueEntries = keyValueEntries.put(k1, v1);
+    KeyValues newKeyValueEntries = keyValueEntries.put(k1, v1);
     if (shouldSample()) {
       withValueUniqueCounts.addAndGet(
           Math.min(keyValueEntries.size(), withValueUniqueCounts.length() - 1),
@@ -384,7 +381,7 @@ public class Context {
    * from its parent.
    */
   public <V1, V2> Context withValues(Key<V1> k1, V1 v1, Key<V2> k2, V2 v2) {
-    PersistentHashArrayMappedTrie<Key<?>, Object> newKeyValueEntries =
+    KeyValues newKeyValueEntries =
         keyValueEntries.put(k1, v1).put(k2, v2);
     if (shouldSample()) {
       withValueUniqueCounts.addAndGet(
@@ -402,7 +399,7 @@ public class Context {
    * from its parent.
    */
   public <V1, V2, V3> Context withValues(Key<V1> k1, V1 v1, Key<V2> k2, V2 v2, Key<V3> k3, V3 v3) {
-    PersistentHashArrayMappedTrie<Key<?>, Object> newKeyValueEntries =
+    KeyValues newKeyValueEntries =
         keyValueEntries.put(k1, v1).put(k2, v2).put(k3, v3);
     if (shouldSample()) {
       withValueUniqueCounts.addAndGet(
@@ -421,7 +418,7 @@ public class Context {
    */
   public <V1, V2, V3, V4> Context withValues(Key<V1> k1, V1 v1, Key<V2> k2, V2 v2,
       Key<V3> k3, V3 v3, Key<V4> k4, V4 v4) {
-    PersistentHashArrayMappedTrie<Key<?>, Object> newKeyValueEntries =
+    KeyValues newKeyValueEntries =
         keyValueEntries.put(k1, v1).put(k2, v2).put(k3, v3).put(k4, v4);
     if (shouldSample()) {
       withValueUniqueCounts.addAndGet(
@@ -740,9 +737,11 @@ public class Context {
    * Lookup the value for a key in the context inheritance chain.
    */
   private Object lookup(Key<?> key) {
+    /*
     if (shouldSample()) {
       getCounts.incrementAndGet(Math.min(keyValueEntries.size(), getCounts.length() - 1));
-    }
+    }*/
+    
     return keyValueEntries.get(key);
   }
 

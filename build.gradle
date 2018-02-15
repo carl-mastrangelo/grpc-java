@@ -293,6 +293,12 @@ subprojects {
         // dependencies that break when including them. (context's testCompile
         // depends on core; core's testCompile depends on testing)
         includeTests = false
+        profilers = ["perfasm"]
+        include = "ReadBenchmark"
+
+
+        
+        jvmArgs = ["-XX:+UnlockDiagnosticVMOptions", "-XX:LogFile=FOO.txt", "-XX:+LogCompilation",   "-XX:+PrintAssembly",  "-XX:+PrintNMethods",  "-XX:+PrintNativeNMethods",  "-XX:+PrintSignatureHandlers",    "-XX:+PrintCompilation"]
     }
 
     task javadocJar(type: Jar) {
