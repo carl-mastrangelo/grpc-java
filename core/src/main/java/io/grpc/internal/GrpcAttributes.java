@@ -17,7 +17,7 @@
 package io.grpc.internal;
 
 import io.grpc.Attributes;
-import java.util.List;
+import java.util.Map;
 
 /**
  * Special attributes that are only useful to gRPC.
@@ -26,8 +26,8 @@ public final class GrpcAttributes {
   /**
    * Attribute key TXT DNS records.
    */
-  public static final Attributes.Key<List<String>> NAME_RESOLVER_ATTR_DNS_TXT =
-      Attributes.Key.of("dns-txt");
+  public static final Attributes.Key<Map<String, Object>> NAME_RESOLVER_ATTR_SERVICE_CONFIG =
+      Attributes.Key.of("service-config");
 
   /**
    * The naming authority of a gRPC LB server address.  It is an address-group-level attribute,
