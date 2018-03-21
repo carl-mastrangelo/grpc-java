@@ -138,6 +138,8 @@ final class ManagedChannelImpl extends ManagedChannel implements Instrumented<Ch
 
   private final ConnectivityStateManager channelStateManager = new ConnectivityStateManager();
 
+  private final ServiceConfigInterceptor serviceConfigInterceptor = new ServiceConfigInterceptor();
+
   private final BackoffPolicy.Provider backoffPolicyProvider;
 
   /**
@@ -566,6 +568,7 @@ final class ManagedChannelImpl extends ManagedChannel implements Instrumented<Ch
     this.transportFactory =
         new CallCredentialsApplyingTransportFactory(clientTransportFactory, this.executor);
     Channel channel = new RealChannel();
+    channel = ClientInterceptors.intercept(channel, serviceConfigInterceptor);
     if (builder.binlogProvider != null) {
       channel = builder.binlogProvider.wrapChannel(channel);
     }
