@@ -25,13 +25,16 @@ import io.grpc.Channel;
 import io.grpc.Deadline;
 import io.grpc.MethodDescriptor;
 import io.grpc.MethodDescriptor.MethodType;
+import io.grpc.internal.ServiceConfigInterceptor.MethodInfo;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.mockito.ArgumentCaptor;
@@ -45,6 +48,16 @@ import org.mockito.MockitoAnnotations;
 @RunWith(JUnit4.class)
 public class ServiceConfigInterceptorTest {
 
+  @Rule public final ExpectedException thrown = ExpectedException.none();
+
+  @Mock private Channel channel;
+  @Captor private ArgumentCaptor<CallOptions> callOptionsCap;
+
+  @Before
+  public void setUp() {
+    MockitoAnnotations.initMocks(this);
+  }
+
   private final ServiceConfigInterceptor interceptor = new ServiceConfigInterceptor();
 
   private final String fullMethodName =
@@ -55,13 +68,7 @@ public class ServiceConfigInterceptorTest {
           .setFullMethodName(fullMethodName)
           .build();
 
-  @Mock private Channel channel;
-  @Captor private ArgumentCaptor<CallOptions> callOptionsCap;
 
-  @Before
-  public void setUp() {
-    MockitoAnnotations.initMocks(this);
-  }
 
   private static final class JsonObj extends HashMap<String, Object> {
     private JsonObj(Object ... kv) {
@@ -184,6 +191,153 @@ public class ServiceConfigInterceptorTest {
 
     verify(channel).newCall(eq(methodDescriptor), callOptionsCap.capture());
     assertThat(callOptionsCap.getValue().getDeadline()).isNotEqualTo(existingDeadline);
+  }
+
+
+  @Test
+  public void handleUpdate_failsOnMissingServiceName() {
+    JsonObj name = new JsonObj("method", "method");
+    JsonObj methodConfig = new JsonObj("name", new JsonList(name));
+    JsonObj serviceConfig = new JsonObj("methodConfig", new JsonList(methodConfig));
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("missing service");
+
+    interceptor.handleUpdate(serviceConfig);
+  }
+
+
+  @Test
+  public void handleUpdate_failsOnDuplicateMethod() {
+    JsonObj name1 = new JsonObj("service", "service", "method", "method");
+    JsonObj name2 = new JsonObj("service", "service", "method", "method");
+    JsonObj methodConfig = new JsonObj("name", new JsonList(name1, name2));
+    JsonObj serviceConfig = new JsonObj("methodConfig", new JsonList(methodConfig));
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("Duplicate method");
+
+    interceptor.handleUpdate(serviceConfig);
+  }
+
+  @Test
+  public void handleUpdate_failsOnEmptyName() {
+    JsonObj methodConfig = new JsonObj();
+    JsonObj serviceConfig = new JsonObj("methodConfig", new JsonList(methodConfig));
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("no names in method config");
+
+    interceptor.handleUpdate(serviceConfig);
+  }
+
+  @Test
+  public void handleUpdate_failsOnDuplicateService() {
+    JsonObj name1 = new JsonObj("service", "service");
+    JsonObj name2 = new JsonObj("service", "service");
+    JsonObj methodConfig = new JsonObj("name", new JsonList(name1, name2));
+    JsonObj serviceConfig = new JsonObj("methodConfig", new JsonList(methodConfig));
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("Duplicate service");
+
+    interceptor.handleUpdate(serviceConfig);
+  }
+
+  @Test
+  public void handleUpdate_failsOnDuplicateServiceMultipleConfig() {
+    JsonObj name1 = new JsonObj("service", "service");
+    JsonObj name2 = new JsonObj("service", "service");
+    JsonObj methodConfig1 = new JsonObj("name", new JsonList(name1));
+    JsonObj methodConfig2 = new JsonObj("name", new JsonList(name2));
+    JsonObj serviceConfig = new JsonObj("methodConfig", new JsonList(methodConfig1, methodConfig2));
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("Duplicate service");
+
+    interceptor.handleUpdate(serviceConfig);
+  }
+
+  @Test
+  public void handleUpdate_replaceExistingConfig() {
+    JsonObj name1 = new JsonObj("service", "service");
+    JsonObj methodConfig1 = new JsonObj("name", new JsonList(name1));
+    JsonObj serviceConfig1 = new JsonObj("methodConfig", new JsonList(methodConfig1));
+
+    JsonObj name2 = new JsonObj("service", "service", "method", "method");
+    JsonObj methodConfig2 = new JsonObj("name", new JsonList(name2));
+    JsonObj serviceConfig2 = new JsonObj("methodConfig", new JsonList(methodConfig2));
+
+    interceptor.handleUpdate(serviceConfig1);
+
+    assertThat(interceptor.serviceMap.get()).isNotEmpty();
+    assertThat(interceptor.serviceMethodMap.get()).isEmpty();
+
+    interceptor.handleUpdate(serviceConfig2);
+
+    assertThat(interceptor.serviceMap.get()).isEmpty();
+    assertThat(interceptor.serviceMethodMap.get()).isNotEmpty();
+  }
+
+  @Test
+  public void handleUpdate_matchNames() {
+    JsonObj name1 = new JsonObj("service", "service2");
+    JsonObj name2 = new JsonObj("service", "service", "method", "method");
+    JsonObj methodConfig = new JsonObj("name", new JsonList(name1, name2));
+    JsonObj serviceConfig = new JsonObj("methodConfig", new JsonList(methodConfig));
+
+    interceptor.handleUpdate(serviceConfig);
+
+    assertThat(interceptor.serviceMethodMap.get())
+        .containsExactly(
+            methodDescriptor.getFullMethodName(),
+            new MethodInfo(methodConfig));
+    assertThat(interceptor.serviceMap.get())
+        .containsExactly("service2", new MethodInfo(methodConfig));
+  }
+
+
+  @Test
+  public void methodInfo_validateDeadline() {
+    JsonObj name = new JsonObj("service", "service");
+    JsonObj methodConfig = new JsonObj("name", new JsonList(name), "timeout", "10000000000000000s");
+
+    thrown.expectMessage("Duration value is out of range");
+
+    new MethodInfo(methodConfig);
+  }
+
+  @Test
+  public void methodInfo_saturateDeadline() {
+    JsonObj name = new JsonObj("service", "service");
+    JsonObj methodConfig = new JsonObj("name", new JsonList(name), "timeout", "315576000000s");
+
+    MethodInfo info = new MethodInfo(methodConfig);
+
+    assertThat(info.timeoutNanos).isEqualTo(Long.MAX_VALUE);
+  }
+
+
+  @Test
+  public void methodInfo_badMaxRequestSize() {
+    JsonObj name = new JsonObj("service", "service");
+    JsonObj methodConfig = new JsonObj("name", new JsonList(name), "maxRequestMessageBytes", -1d);
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("exceeds bounds");
+
+    new MethodInfo(methodConfig);
+  }
+
+  @Test
+  public void methodInfo_badMaxResponseSize() {
+    JsonObj name = new JsonObj("service", "service");
+    JsonObj methodConfig = new JsonObj("name", new JsonList(name), "maxResponseMessageBytes", -1d);
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("exceeds bounds");
+
+    new MethodInfo(methodConfig);
   }
 
   private static final class NoopMarshaller implements MethodDescriptor.Marshaller<Void> {

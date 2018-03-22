@@ -45,9 +45,11 @@ final class ServiceConfigInterceptor implements ClientInterceptor {
   private static final Logger logger = Logger.getLogger(ServiceConfigInterceptor.class.getName());
 
   // Map from method name to MethodInfo
-  private final AtomicReference<Map<String, MethodInfo>> serviceMethodMap
+  @VisibleForTesting
+  final AtomicReference<Map<String, MethodInfo>> serviceMethodMap
       = new AtomicReference<Map<String, MethodInfo>>();
-  private final AtomicReference<Map<String, MethodInfo>> serviceMap
+  @VisibleForTesting
+  final AtomicReference<Map<String, MethodInfo>> serviceMap
       = new AtomicReference<Map<String, MethodInfo>>();
 
   ServiceConfigInterceptor() {}
@@ -72,7 +74,8 @@ final class ServiceConfigInterceptor implements ClientInterceptor {
       List<Map<String, Object>> nameList =
           ServiceConfigUtil.getNameListFromMethodConfig(methodConfig);
 
-      checkArgument(!nameList.isEmpty(), "no names in method config %s", methodConfig);
+      checkArgument(
+          nameList != null && !nameList.isEmpty(), "no names in method config %s", methodConfig);
       for (Map<String, Object> name : nameList) {
         String serviceName = ServiceConfigUtil.getServiceFromName(name);
         checkArgument(!Strings.isNullOrEmpty(serviceName), "missing service name");
