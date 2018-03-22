@@ -18,6 +18,7 @@ package io.grpc.internal;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
 import com.google.common.base.Strings;
@@ -101,7 +102,8 @@ final class ServiceConfigInterceptor implements ClientInterceptor {
   /**
    * Equivalent of MethodConfig from a ServiceConfig.
    */
-  private static final class MethodInfo {
+  @VisibleForTesting
+  static final class MethodInfo {
     final Long timeoutNanos;
     final Boolean waitForReady;
     final Integer maxInboundMessageSize;
