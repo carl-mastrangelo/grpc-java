@@ -27,6 +27,8 @@ import io.grpc.Attributes;
 import io.grpc.Metadata;
 import io.grpc.Status;
 import io.grpc.StatusException;
+import io.grpc.internal.CensusStatsModule;
+import io.grpc.internal.CensusTracingModule;
 import io.grpc.internal.ClientStreamListener.RpcProgress;
 import io.grpc.internal.ClientTransport.PingCallback;
 import io.grpc.internal.GrpcUtil;
@@ -61,6 +63,7 @@ import io.netty.handler.codec.http2.Http2FrameReader;
 import io.netty.handler.codec.http2.Http2FrameWriter;
 import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2HeadersDecoder;
+import io.netty.handler.codec.http2.Http2HeadersEncoder.SensitivityDetector;
 import io.netty.handler.codec.http2.Http2InboundFrameLogger;
 import io.netty.handler.codec.http2.Http2OutboundFrameLogger;
 import io.netty.handler.codec.http2.Http2Settings;
@@ -69,6 +72,7 @@ import io.netty.handler.codec.http2.Http2StreamVisitor;
 import io.netty.handler.codec.http2.StreamBufferingEncoder;
 import io.netty.handler.codec.http2.WeightedFairQueueByteDistributor;
 import io.netty.handler.logging.LogLevel;
+import io.netty.util.AsciiString;
 import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
@@ -105,6 +109,22 @@ class NettyClientHandler extends AbstractNettyHandler {
   private Http2Ping ping;
   private Attributes attributes = Attributes.EMPTY;
 
+
+  private static final class DontIndexUncachableFields implements SensitivityDetector {
+    private static final AsciiString TIMEOUT_NAME = new AsciiString(GrpcUtil.TIMEOUT);
+    private static final AsciiString STATS_NAME = new AsciiString(CensusStatsModule.HEADER_NAME);
+    private static final AsciiString TRACE_NAME = new AsciiString(CensusTracingModule.HEADER_NAME);
+
+    @Override
+    public boolean isSensitive(CharSequence name, CharSequence value) {
+      if (name.charAt(0) == ':') {
+        return false;
+      }
+      // pretend that timeouts are sensitive, because they are hardly ever reusable.
+      return TIMEOUT_NAME.equals(name) || STATS_NAME.equals(name) || TRACE_NAME.equals(name);
+    }
+  }
+
   static NettyClientHandler newHandler(
       ClientTransportLifecycleManager lifecycleManager,
       @Nullable KeepAliveManager keepAliveManager,
@@ -116,7 +136,7 @@ class NettyClientHandler extends AbstractNettyHandler {
     Preconditions.checkArgument(maxHeaderListSize > 0, "maxHeaderListSize must be positive");
     Http2HeadersDecoder headersDecoder = new GrpcHttp2ClientHeadersDecoder(maxHeaderListSize);
     Http2FrameReader frameReader = new DefaultHttp2FrameReader(headersDecoder);
-    Http2FrameWriter frameWriter = new DefaultHttp2FrameWriter();
+    Http2FrameWriter frameWriter = new DefaultHttp2FrameWriter(new DontIndexUncachableFields());
     Http2Connection connection = new DefaultHttp2Connection(false);
     WeightedFairQueueByteDistributor dist = new WeightedFairQueueByteDistributor(connection);
     dist.allocationQuantum(16 * 1024); // Make benchmarks fast again.

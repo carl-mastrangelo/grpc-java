@@ -31,6 +31,7 @@ import io.grpc.ClientStreamTracer;
 import io.grpc.Context;
 import io.grpc.ForwardingClientCall.SimpleForwardingClientCall;
 import io.grpc.ForwardingClientCallListener.SimpleForwardingClientCallListener;
+import io.grpc.InternalMetadata;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.ServerStreamTracer;
@@ -70,6 +71,8 @@ public final class CensusStatsModule {
   private static final double NANOS_PER_MILLI = TimeUnit.MILLISECONDS.toNanos(1);
   private static final ClientTracer BLANK_CLIENT_TRACER = new ClientTracer();
 
+  public static final String HEADER_NAME = "grpc-tags-bin";
+
   private final Tagger tagger;
   private final StatsRecorder statsRecorder;
   private final Supplier<Stopwatch> stopwatchSupplier;
@@ -103,7 +106,7 @@ public final class CensusStatsModule {
     this.stopwatchSupplier = checkNotNull(stopwatchSupplier, "stopwatchSupplier");
     this.propagateTags = propagateTags;
     this.statsHeader =
-        Metadata.Key.of("grpc-tags-bin", new Metadata.BinaryMarshaller<TagContext>() {
+        Metadata.Key.of(HEADER_NAME, new Metadata.BinaryMarshaller<TagContext>() {
             @Override
             public byte[] toBytes(TagContext context) {
               // TODO(carl-mastrangelo): currently we only make sure the correctness. We may need to

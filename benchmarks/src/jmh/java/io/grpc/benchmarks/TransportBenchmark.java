@@ -19,6 +19,7 @@ package io.grpc.benchmarks;
 import static io.grpc.benchmarks.Utils.pickUnusedPort;
 
 import com.google.protobuf.ByteString;
+import io.grpc.Deadline;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
 import io.grpc.benchmarks.proto.BenchmarkServiceGrpc;
@@ -60,7 +61,7 @@ public class TransportBenchmark {
     INPROCESS, NETTY, NETTY_LOCAL, NETTY_EPOLL, OKHTTP
   }
 
-  @Param({"INPROCESS", "NETTY", "NETTY_LOCAL", "OKHTTP"})
+  @Param({"NETTY"})
   public Transport transport;
   @Param({"true", "false"})
   public boolean direct;
@@ -68,6 +69,7 @@ public class TransportBenchmark {
   private ManagedChannel channel;
   private Server server;
   private BenchmarkServiceGrpc.BenchmarkServiceBlockingStub stub;
+  private BenchmarkServiceGrpc.BenchmarkServiceBlockingStub deadlineStub;
   private volatile EventLoopGroup groupToShutdown;
 
   @Setup
@@ -152,6 +154,7 @@ public class TransportBenchmark {
     server.start();
     channel = channelBuilder.build();
     stub = BenchmarkServiceGrpc.newBlockingStub(channel);
+    deadlineStub = stub.withDeadline(Deadline.after(1000, TimeUnit.DAYS));
     // Wait for channel to start
     stub.unaryCall(SimpleRequest.getDefaultInstance());
   }
@@ -187,5 +190,12 @@ public class TransportBenchmark {
   @OutputTimeUnit(TimeUnit.NANOSECONDS)
   public SimpleResponse unaryCall1024() {
     return stub.unaryCall(simpleRequest);
+  }
+
+  @Benchmark
+  @BenchmarkMode(Mode.SampleTime)
+  @OutputTimeUnit(TimeUnit.NANOSECONDS)
+  public SimpleResponse unaryCall1024_deadline() {
+    return deadlineStub.unaryCall(simpleRequest);
   }
 }

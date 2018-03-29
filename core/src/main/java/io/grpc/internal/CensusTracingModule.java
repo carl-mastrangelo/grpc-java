@@ -55,12 +55,14 @@ import javax.annotation.Nullable;
  * starts earlier than the ServerCall.  Therefore, only one tracer is created per stream/call and
  * it's the tracer that reports the summary to Census.
  */
-final class CensusTracingModule {
+public final class CensusTracingModule {
   private static final Logger logger = Logger.getLogger(CensusTracingModule.class.getName());
 
   @Nullable private static final AtomicIntegerFieldUpdater<ClientCallTracer> callEndedUpdater;
 
   @Nullable private static final AtomicIntegerFieldUpdater<ServerTracer> streamClosedUpdater;
+
+  public static final String HEADER_NAME = "grpc-trace-bin";
 
   /**
    * When using Atomic*FieldUpdater, some Samsung Android 5.0.x devices encounter a bug in their JDK
@@ -95,7 +97,7 @@ final class CensusTracingModule {
     this.censusTracer = checkNotNull(censusTracer, "censusTracer");
     checkNotNull(censusPropagationBinaryFormat, "censusPropagationBinaryFormat");
     this.tracingHeader =
-        Metadata.Key.of("grpc-trace-bin", new Metadata.BinaryMarshaller<SpanContext>() {
+        Metadata.Key.of(HEADER_NAME, new Metadata.BinaryMarshaller<SpanContext>() {
             @Override
             public byte[] toBytes(SpanContext context) {
               return censusPropagationBinaryFormat.toByteArray(context);

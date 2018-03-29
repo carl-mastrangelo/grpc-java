@@ -295,7 +295,7 @@ subprojects {
     jmh {
         warmupIterations = 10
         iterations = 10
-        fork = 1
+        fork = 4
         // None of our benchmarks need the tests, and we have pseudo-circular
         // dependencies that break when including them. (context's testCompile
         // depends on core; core's testCompile depends on testing)
@@ -303,6 +303,7 @@ subprojects {
         if (project.hasProperty('jmhIncludeSingleClass')) {
           include = [project.property('jmhIncludeSingleClass')]
         }
+        include = "TransportBench"
     }
 
     task javadocJar(type: Jar) {
