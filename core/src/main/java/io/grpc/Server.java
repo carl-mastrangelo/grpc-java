@@ -66,8 +66,10 @@ public abstract class Server {
    * implementation.
    *
    * @since 1.1.0
+   * @deprecated use {@link #getServices()} instead.
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/2222")
+  @Deprecated
   public List<ServerServiceDefinition> getImmutableServices() {
     return Collections.emptyList();
   }
@@ -78,8 +80,10 @@ public abstract class Server {
    * implementation.
    *
    * @since 1.1.0
+   * @deprecated use {@link #getServices()} instead.
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/2222")
+  @Deprecated
   public List<ServerServiceDefinition> getMutableServices() {
     return Collections.emptyList();
   }

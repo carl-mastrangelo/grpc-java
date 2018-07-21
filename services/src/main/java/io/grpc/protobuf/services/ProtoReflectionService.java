@@ -93,8 +93,7 @@ public final class ProtoReflectionService extends ServerReflectionGrpc.ServerRef
   private ServerReflectionIndex updateIndexIfNecessary() {
     synchronized (lock) {
       if (serverReflectionIndex == null) {
-        serverReflectionIndex =
-            new ServerReflectionIndex(server.getImmutableServices(), server.getMutableServices());
+        serverReflectionIndex = new ServerReflectionIndex(server.getServices());
         return serverReflectionIndex;
       }
 
@@ -333,9 +332,7 @@ public final class ProtoReflectionService extends ServerReflectionGrpc.ServerRef
     private final FileDescriptorIndex immutableServicesIndex;
     private final FileDescriptorIndex mutableServicesIndex;
 
-    public ServerReflectionIndex(
-        List<ServerServiceDefinition> immutableServices,
-        List<ServerServiceDefinition> mutableServices) {
+    ServerReflectionIndex(List<ServerServiceDefinition> services) {
       immutableServicesIndex = new FileDescriptorIndex(immutableServices);
       mutableServicesIndex = new FileDescriptorIndex(mutableServices);
     }
