@@ -18,6 +18,7 @@ package io.grpc.internal;
 
 import io.grpc.internal.Channelz.SocketStats;
 import java.io.IOException;
+import java.net.SocketAddress;
 import java.util.List;
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -54,4 +55,11 @@ public interface InternalServer {
    * Returns the listen sockets of this server. May return an empty list but never returns null.
    */
   List<Instrumented<SocketStats>> getListenSockets();
+
+  /**
+   * Returns the addresses currently being listened on.
+   *
+   * @throws IllegalStateException if the server is not running.
+   */
+  List<SocketAddress> getListenSocketAddresses();
 }

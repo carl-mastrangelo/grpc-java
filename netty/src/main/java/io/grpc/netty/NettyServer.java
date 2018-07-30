@@ -147,6 +147,11 @@ class NettyServer implements InternalServer, WithLogId {
   }
 
   @Override
+  public List<SocketAddress> getListenSocketAddresses() {
+    return null; FIXME
+  }
+
+  @Override
   public List<Instrumented<SocketStats>> getListenSockets() {
     return listenSockets;
   }

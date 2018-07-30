@@ -48,6 +48,7 @@ import io.grpc.Status;
 import io.grpc.internal.Channelz.ServerStats;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -174,6 +175,11 @@ public final class ServerImpl extends io.grpc.Server implements Instrumented<Ser
       checkState(!terminated, "Already terminated");
       return transportServer.getPort();
     }
+  }
+
+  @Override
+  public List<SocketAddress> getListenAddresses() {
+    return transportServer.getListenSocketAddresses();
   }
 
   @Override

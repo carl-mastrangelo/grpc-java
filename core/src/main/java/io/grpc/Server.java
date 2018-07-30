@@ -17,6 +17,7 @@
 package io.grpc;
 
 import java.io.IOException;
+import java.net.SocketAddress;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -48,6 +49,11 @@ public abstract class Server {
    */
   public int getPort() {
     return -1;
+  }
+
+
+  public List<? extends SocketAddress> getListenAddresses() {
+    return Collections.emptyList();
   }
 
   /**
