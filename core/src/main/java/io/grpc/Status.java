@@ -521,8 +521,8 @@ public final class Status {
    * Same as {@link #asRuntimeException()} but includes the provided trailers in the returned
    * exception.
    */
-  @ExperimentalApi
-  public StatusRuntimeException asRuntimeException(Metadata trailers) {
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/4683")
+  public StatusRuntimeException asRuntimeException(@Nullable Metadata trailers) {
     return new StatusRuntimeException(this, trailers);
   }
 
@@ -537,8 +537,8 @@ public final class Status {
   /**
    * Same as {@link #asException()} but includes the provided trailers in the returned exception.
    */
-  @ExperimentalApi
-  public StatusException asException(Metadata trailers) {
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/4683")
+  public StatusException asException(@Nullable Metadata trailers) {
     return new StatusException(this, trailers);
   }
 
