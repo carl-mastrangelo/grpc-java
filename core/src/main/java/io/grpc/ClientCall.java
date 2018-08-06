@@ -16,7 +16,9 @@
 
 package io.grpc;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.annotation.meta.When;
 
 /**
  * An instance of a call to a remote method. A call will send zero or more
@@ -124,7 +126,8 @@ public abstract class ClientCall<ReqT, RespT> {
      *
      * @param message returned by the server
      */
-    public void onMessage(T message) {}
+    public void onMessage(@Nonnull(when=When.MAYBE) T message) {}
+
 
     /**
      * The ClientCall has been closed. Any additional calls to the {@code ClientCall} will not be

@@ -25,6 +25,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
+import io.grpc.ClientCall.Listener;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
@@ -34,6 +35,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
@@ -54,6 +56,99 @@ public final class ClientCalls {
   // Prevent instantiation
   private ClientCalls() {}
 
+
+
+  private static final class CallProcessor<Req, Resp> implements GrpcProcessor<Req, Resp> {
+
+    private final ClientCall<Req, Resp> call = null;
+
+    private GrpcSubscriber<Resp> subscriber;
+    private final class CallSubscription implements GrpcSubscription {
+
+      @Override
+      public void cancel() {
+        CallProcessor.this.cancel();
+      }
+
+      @Override
+      public void request(long n) {
+        CallProcessor.this.request(n);
+      }
+    }
+
+    private void cancel() {
+      call.cancel("manually cancelled", null);
+    }
+
+    private void request(long n) {
+      if (n == 1) {
+        call.request(1);
+      } else if (n <= 0) {
+        throw new IllegalArgumentException("Invalid request count: " + n);
+      } else {
+        while (n > 0) {
+          int intn = (int) Math.min(n, Integer.MAX_VALUE);
+          n -= intn;
+          call.request(intn);
+        }
+      }
+    }
+
+    @Override
+    public void subscribe(GrpcSubscriber<Resp> subscriber) {
+      checkNotNull(subscriber, "subscriber");
+      if (this.subscriber != null) {
+        final class NoopSubscription implements GrpcSubscription {
+          boolean cancelled;
+
+          @Override
+          public void cancel() {
+            cancelled = true;
+          }
+
+          @Override
+          public void request(long n) {
+            // do nothing
+          }
+        }
+        NoopSubscription noop = new NoopSubscription();
+        subscriber.onSubscribe(noop);
+        if (!noop.cancelled) {
+          subscriber.onError(new UnsupportedOperationException("can't have multiple subscribers"));
+        }
+        return;
+      }
+      this.subscriber = subscriber;
+      call.start();
+
+      subscriber.onSubscribe(new CallSubscription());
+    }
+
+    @Override
+    public void onComplete() {
+      call.halfClose();
+    }
+
+    @Override
+    public void onError(Throwable throwable) {
+      call.cancel("Error during call", throwable);
+    }
+
+    @Override
+    public void onNext(Req item) {
+      call.sendMessage(item);
+    }
+
+    @Override
+    public void onSubscribe(GrpcSubscription subscription) {
+      subscription.request();
+
+    }
+  }
+
+
+
+
   /**
    * Executes a unary call with a response {@link StreamObserver}.
    */
@@ -62,7 +157,242 @@ public final class ClientCalls {
       ReqT param,
       StreamObserver<RespT> observer) {
     asyncUnaryRequestCall(call, param, observer, false);
+
+    final class MyPub implements GrpcPublisher<Long> {
+
+      @Override
+      public void subscribe(GrpcSubscriber<Long> subscriber) {
+        subscriber.onNext(new Long(1));
+      }
+    }
+
+
+
+
+
+
+
+    asyncBidiCall((ClientCall<Long, String>) null, new GrpcPublisher<Long>() {
+      @Override
+      public void subscribe(GrpcSubscriber<Object> subscriber) {
+        subscriber.onNext(numb);
+      }
+    }), null;
   }
+
+
+
+  public static <ReqT, ResT, CallReqT extends ReqT> void asyncBidiCall(
+      final ClientCall<ReqT, ResT> call,
+      final GrpcPublisher<CallReqT> pubs,
+      final GrpcSubscriber<ResT> subs) {
+
+    final class LnSub extends Listener<ResT> implements GrpcSubscription {
+
+      @Override
+      public void onMessage(ResT message) {
+        subs.onNext(message);
+      }
+
+      @Override
+      public void onClose(Status status, Metadata trailers) {
+        super.onClose(status, trailers);
+      }
+
+      @Override
+      public void cancel() {
+        call.cancel(null, null);
+      }
+
+      @Override
+      public void request(long n) {
+
+        call.request(1);
+      }
+    }
+
+    pubs.subscribe(new GrpcSubscriber<CallReqT>() {
+      @Override
+      public void onComplete() {
+        call.halfClose();
+      }
+
+      @Override
+      public void onError(Throwable throwable) {
+
+      }
+
+      @Override
+      public void onNext(CallReqT item) {
+        call.sendMessage(item);
+      }
+
+      @Override
+      public void onSubscribe(GrpcSubscription subscription) {
+        subscription.request(1);
+      }
+    });
+
+    subs.onSubscribe(new LnSub());
+
+    call.start(new LnSub() {
+
+    }, new Metadata());
+
+    pubs.subscribe(new GrpcSubscriber<CallReqT>() {
+      @Override
+      public void onComplete() {
+        call.halfClose();
+      }
+
+      @Override
+      public void onError(Throwable throwable) {
+        call.cancel("Error received", throwable);
+      }
+
+      @Override
+      public void onNext(CallReqT item) {
+        call.sendMessage(item);
+      }
+
+      @Override
+      public void onSubscribe(GrpcSubscription subscription) {
+
+      }
+    });
+
+    subs.onSubscribe(new GrpcSubscription() {
+
+      boolean cancel;
+
+      @Override
+      public void cancel() {
+        call.cancel("Cancelled by user", null);
+      }
+
+      @Override
+      public void request(long n) {
+
+      }
+    });
+  }
+
+  {
+
+    GrpcPublisher<Long> pub = new GrpcPublisher<Long>() {
+
+      GrpcSubscriber<? super Long> subscriber;
+
+      class Subs implements GrpcSubscription {
+
+        @Override
+        public void cancel() {
+
+        }
+
+        @Override
+        public void request(long n) {
+
+        }
+      }
+
+      @Override
+      public void subscribe(GrpcSubscriber<? super Long> subscriber) {
+        this.subscriber = subscriber;
+        subscriber.onSubscribe(new Subs());
+
+
+      }
+    };
+
+
+
+    class GrpcUnary
+
+
+
+    pub.subscribe(new GrpcSubscriber<Long>() {
+      @Override
+      public void onComplete() {
+
+      }
+
+      @Override
+      public void onError(Throwable throwable) {
+
+      }
+
+      @Override
+      public void onNext(Long item) {
+
+      }
+
+      @Override
+      public void onSubscribe(GrpcSubscription subscription) {
+
+
+      }
+    });
+    final GrpcProcessor<String, Long> a = new GrpcProcessor<String, Long>() {
+
+      @Override
+      public void onComplete() {
+
+      }
+
+      @Override
+      public void onError(Throwable throwable) {
+
+      }
+
+      @Override
+      public void onNext(String item) {
+
+      }
+
+      @Override
+      public void onSubscribe(GrpcSubscription subscription) {
+
+      }
+
+      @Override
+      public void subscribe(GrpcSubscriber<? super Long> subscriber) {
+        //subscriber.
+
+      }
+    };
+
+    ClientCall<Long, String> call = null;
+
+    call.start(new Listener<String>() {
+      @Override
+      public void onHeaders(Metadata headers) {
+      }
+
+      @Override
+      public void onMessage(String message) {
+        a.onNext(message);
+      }
+
+      @Override
+      public void onClose(Status status, Metadata trailers) {
+        if (status.isOk()) {
+          a.onComplete();
+        } else {
+          a.onError(status.asRuntimeException(trailers));
+        }
+      }
+
+      @Override
+      public void onReady() {
+        super.onReady();
+      }
+    });
+
+  }
+
+
+
 
   /**
    * Executes a server-streaming call with a response {@link StreamObserver}.
