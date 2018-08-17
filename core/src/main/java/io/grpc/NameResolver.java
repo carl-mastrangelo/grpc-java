@@ -16,8 +16,11 @@
 
 package io.grpc;
 
+import java.net.SocketAddress;
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -117,6 +120,17 @@ public abstract class NameResolver {
      * @since 1.0.0
      */
     public abstract String getDefaultScheme();
+
+    /**
+     * Returns a set of all possible {@link SocketAddress} types that this name resolver factory
+     * supports.  A name resolver produced by this factory may only produce addresses that are
+     * {@code instanceof} one or more of these classes.
+     *
+     * @since 1.15.0
+     */
+    public Set<? extends Class<? extends SocketAddress>> supportedSocketAddress() {
+      return Collections.singleton(SocketAddress.class);
+    }
   }
 
   /**

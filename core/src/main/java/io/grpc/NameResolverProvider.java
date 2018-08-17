@@ -18,10 +18,14 @@ package io.grpc;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import java.net.SocketAddress;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Provider of name resolvers for name agnostic consumption.
@@ -89,7 +93,21 @@ public abstract class NameResolverProvider extends NameResolver.Factory {
    */
   protected abstract int priority();
 
-  private static class NameResolverFactory extends NameResolver.Factory {
+  /**
+   * Returns a set of all possible {@link SocketAddress} types that this name resolver factory
+   * supports.  A name resolver produced by this factory may only produce addresses that are
+   * {@code instanceof} one or more of these classes.
+   *
+   * <p>All subclasses are expected to override this method.</p>
+   *
+   * @since 1.15.0
+   */
+  @Override
+  public Set<? extends Class<? extends SocketAddress>> supportedSocketAddress() {
+    return super.supportedSocketAddress();
+  }
+
+  private static final class NameResolverFactory extends NameResolver.Factory {
     private final List<NameResolverProvider> providers;
 
     public NameResolverFactory(List<NameResolverProvider> providers) {
@@ -112,6 +130,17 @@ public abstract class NameResolverProvider extends NameResolver.Factory {
     public String getDefaultScheme() {
       checkForProviders();
       return providers.get(0).getDefaultScheme();
+    }
+
+    @Override
+    public Set<? extends Class<? extends SocketAddress>> supportedSocketAddress() {
+      // Don't check for providers
+      Set<Class<? extends SocketAddress>> supported =
+          new LinkedHashSet<Class<? extends SocketAddress>>();
+      for (NameResolverProvider provider : providers) {
+        supported.addAll(provider.supportedSocketAddress());
+      }
+      return Collections.unmodifiableSet(supported);
     }
 
     private void checkForProviders() {

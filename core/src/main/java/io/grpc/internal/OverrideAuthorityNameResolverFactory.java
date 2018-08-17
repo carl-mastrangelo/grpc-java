@@ -18,7 +18,9 @@ package io.grpc.internal;
 
 import io.grpc.Attributes;
 import io.grpc.NameResolver;
+import java.net.SocketAddress;
 import java.net.URI;
+import java.util.Set;
 import javax.annotation.Nullable;
 
 /**
@@ -60,5 +62,10 @@ final class OverrideAuthorityNameResolverFactory extends NameResolver.Factory {
   @Override
   public String getDefaultScheme() {
     return delegate.getDefaultScheme();
+  }
+
+  @Override
+  public Set<? extends Class<? extends SocketAddress>> supportedSocketAddress() {
+    return delegate.supportedSocketAddress();
   }
 }

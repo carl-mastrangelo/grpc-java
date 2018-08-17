@@ -19,7 +19,13 @@ package io.grpc.internal;
 import com.google.common.base.Preconditions;
 import io.grpc.Attributes;
 import io.grpc.NameResolverProvider;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.net.URI;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * A provider for {@link DnsNameResolver}.
@@ -71,5 +77,14 @@ public final class DnsNameResolverProvider extends NameResolverProvider {
   @Override
   protected int priority() {
     return 5;
+  }
+
+  @Override
+  public Set<? extends Class<? extends SocketAddress>> supportedSocketAddress() {
+    Set<Class<? extends SocketAddress>> supported =
+        new LinkedHashSet<Class<? extends SocketAddress>>(2);
+    supported.add(InetSocketAddress.class);
+    supported.add(ProxySocketAddress.class);
+    return Collections.unmodifiableSet(supported);
   }
 }

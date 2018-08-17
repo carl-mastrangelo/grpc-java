@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
@@ -467,11 +468,12 @@ public abstract class AbstractManagedChannelImplBuilder
     }
   }
 
-  private static class DirectAddressNameResolverFactory extends NameResolver.Factory {
+  private static final class DirectAddressNameResolverFactory extends NameResolver.Factory {
     final SocketAddress address;
     final String authority;
 
     DirectAddressNameResolverFactory(SocketAddress address, String authority) {
+      // TODO(carl-mastrangelo): check if this should accept null
       this.address = address;
       this.authority = authority;
     }
@@ -499,6 +501,11 @@ public abstract class AbstractManagedChannelImplBuilder
     @Override
     public String getDefaultScheme() {
       return DIRECT_ADDRESS_SCHEME;
+    }
+
+    @Override
+    public Set<? extends Class<? extends SocketAddress>> supportedSocketAddress() {
+      return Collections.singleton(address.getClass());
     }
   }
 

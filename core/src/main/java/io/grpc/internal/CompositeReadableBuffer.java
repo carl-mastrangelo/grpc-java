@@ -16,6 +16,7 @@
 
 package io.grpc.internal;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -199,6 +200,12 @@ public class CompositeReadableBuffer extends AbstractReadableBuffer {
       buffers.remove().close();
     }
   }
+
+  abstract class Bufs implements Iterable<ByteBuffer>, Closeable {
+    void returnBuffer(ByteBuffer b);
+  }
+
+
 
   /**
    * A simple read operation to perform on a single {@link ReadableBuffer}. All state management for
