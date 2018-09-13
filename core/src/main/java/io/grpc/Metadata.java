@@ -267,7 +267,7 @@ public final class Metadata {
     if (isEmpty()) {
       return Collections.emptySet();
     }
-    Set<String> ks = new HashSet<String>(size);
+    Set<String> ks = new HashSet<>(size);
     for (int i = 0; i < size; i++) {
       ks.add(new String(name(i), 0 /* hibyte */));
     }

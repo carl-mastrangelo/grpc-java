@@ -133,7 +133,7 @@ public class RouteGuideServerTest {
     features.add(f2);
     features.add(f3);
     features.add(f4);
-    final Collection<Feature> result = new HashSet<Feature>();
+    final Collection<Feature> result = new HashSet<>();
     final CountDownLatch latch = new CountDownLatch(1);
     StreamObserver<Feature> responseObserver =
         new StreamObserver<Feature>() {
@@ -159,7 +159,7 @@ public class RouteGuideServerTest {
     assertTrue(latch.await(1, TimeUnit.SECONDS));
 
     // verify
-    assertEquals(new HashSet<Feature>(Arrays.asList(f2, f3)), result);
+    assertEquals(new HashSet<>(Arrays.asList(f2, f3)), result);
   }
 
   @Test

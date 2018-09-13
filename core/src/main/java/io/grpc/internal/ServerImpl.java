@@ -106,7 +106,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
   @GuardedBy("lock") private boolean transportServerTerminated;
   /** {@code transportServer} and services encapsulating something similar to a TCP connection. */
   @GuardedBy("lock") private final Collection<ServerTransport> transports =
-      new HashSet<ServerTransport>();
+      new HashSet<>();
 
   private final Context rootContext;
 

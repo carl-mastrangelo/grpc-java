@@ -107,7 +107,7 @@ public final class ServiceDescriptor {
   }
 
   static void validateMethodNames(String serviceName, Collection<MethodDescriptor<?, ?>> methods) {
-    Set<String> allNames = new HashSet<String>(methods.size());
+    Set<String> allNames = new HashSet<>(methods.size());
     for (MethodDescriptor<?, ?> method : methods) {
       checkNotNull(method, "method");
       String methodServiceName =

@@ -287,7 +287,7 @@ public final class RoundRobinLoadBalancerFactory extends LoadBalancer.Factory {
      * remove all attributes.
      */
     private static Set<EquivalentAddressGroup> stripAttrs(List<EquivalentAddressGroup> groupList) {
-      Set<EquivalentAddressGroup> addrs = new HashSet<EquivalentAddressGroup>(groupList.size());
+      Set<EquivalentAddressGroup> addrs = new HashSet<>(groupList.size());
       for (EquivalentAddressGroup group : groupList) {
         addrs.add(new EquivalentAddressGroup(group.getAddresses()));
       }
@@ -310,7 +310,7 @@ public final class RoundRobinLoadBalancerFactory extends LoadBalancer.Factory {
     }
 
     private static <T> Set<T> setsDifference(Set<T> a, Set<T> b) {
-      Set<T> aCopy = new HashSet<T>(a);
+      Set<T> aCopy = new HashSet<>(a);
       aCopy.removeAll(b);
       return aCopy;
     }
@@ -465,7 +465,7 @@ public final class RoundRobinLoadBalancerFactory extends LoadBalancer.Factory {
       // the lists cannot contain duplicate subchannels
       return other == this || (stickinessState == other.stickinessState
           && list.size() == other.list.size()
-          && new HashSet<Subchannel>(list).containsAll(other.list));
+          && new HashSet<>(list).containsAll(other.list));
     }
   }
 

@@ -177,10 +177,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
   // Must be mutated from channelExecutor
   // If any monitoring hook to be added later needs to get a snapshot of this Set, we could
   // switch to a ConcurrentHashMap.
-  private final Set<InternalSubchannel> subchannels = new HashSet<InternalSubchannel>(16, .75f);
+  private final Set<InternalSubchannel> subchannels = new HashSet<>(16, .75f);
 
   // Must be mutated from channelExecutor
-  private final Set<OobChannel> oobChannels = new HashSet<OobChannel>(1, .75f);
+  private final Set<OobChannel> oobChannels = new HashSet<>(1, .75f);
 
   // reprocess() must be run from channelExecutor
   private final DelayedClientTransport delayedTransport;
@@ -933,7 +933,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     final Object lock = new Object();
 
     @GuardedBy("lock")
-    Collection<ClientStream> uncommittedRetriableStreams = new HashSet<ClientStream>();
+    Collection<ClientStream> uncommittedRetriableStreams = new HashSet<>();
 
     @GuardedBy("lock")
     Status shutdownStatus;
@@ -996,7 +996,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
           shutdownStatusCopy = shutdownStatus;
           // Because retriable transport is long-lived, we take this opportunity to down-size the
           // hashmap.
-          uncommittedRetriableStreams = new HashSet<ClientStream>();
+          uncommittedRetriableStreams = new HashSet<>();
         }
       }
 

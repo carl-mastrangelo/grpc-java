@@ -748,7 +748,7 @@ public class CensusModulesTest {
     headers.put(
         Metadata.Key.of("never-used-key-bin", Metadata.BINARY_BYTE_MARSHALLER),
         new byte[] {});
-    Set<String> originalHeaderKeys = new HashSet<String>(headers.keys());
+    Set<String> originalHeaderKeys = new HashSet<>(headers.keys());
 
     CensusTracingModule.ClientCallTracer callTracer =
         censusTracing.newClientCallTracer(BlankSpan.INSTANCE, method);

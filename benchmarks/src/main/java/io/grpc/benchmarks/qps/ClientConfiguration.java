@@ -127,7 +127,7 @@ public class ClientConfiguration implements Configuration {
         // If no options are supplied, default to including all options.
         supportedParams = ClientParam.values();
       }
-      return Collections.unmodifiableSet(new LinkedHashSet<Param>(asList(supportedParams)));
+      return Collections.unmodifiableSet(new LinkedHashSet<>(asList(supportedParams)));
     }
   }
 

@@ -502,7 +502,7 @@ final class BinlogHelper {
       BinlogHelper globalLog = null;
       Map<String, BinlogHelper> perServiceLogs = new HashMap<String, BinlogHelper>();
       Map<String, BinlogHelper> perMethodLogs = new HashMap<String, BinlogHelper>();
-      Set<String> blacklistedMethods = new HashSet<String>();
+      Set<String> blacklistedMethods = new HashSet<>();
       if (configurationString != null && configurationString.length() > 0) {
         for (String configuration : Splitter.on(',').split(configurationString)) {
           Matcher configMatcher = configRe.matcher(configuration);

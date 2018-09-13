@@ -71,7 +71,7 @@ final class DnsNameResolver extends NameResolver {
   static final String SERVICE_CONFIG_PREFIX = "_grpc_config=";
   private static final Set<String> SERVICE_CONFIG_CHOICE_KEYS =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   SERVICE_CONFIG_CHOICE_CLIENT_LANGUAGE_KEY,
                   SERVICE_CONFIG_CHOICE_PERCENTAGE_KEY,
