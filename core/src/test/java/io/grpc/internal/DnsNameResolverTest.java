@@ -219,7 +219,7 @@ public class DnsNameResolverTest {
       }
     });
 
-    new DnsNameResolver.Resolve(nrf).resolveInternal(mockListener);
+    nrf.new Resolve().resolveInternal(mockListener);
 
     ArgumentCaptor<Status> ac = ArgumentCaptor.forClass(Status.class);
     verify(mockListener).onError(ac.capture());

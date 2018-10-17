@@ -124,7 +124,7 @@ final class DnsNameResolver extends NameResolver {
   @GuardedBy("this")
   private Listener listener;
 
-  private final Runnable resolveRunnable = new Resolve(this);
+  private final Runnable resolveRunnable = new Resolve();
 
   DnsNameResolver(@Nullable String nsAuthority, String name, Attributes params,
       Resource<ExecutorService> executorResource,
@@ -173,12 +173,12 @@ final class DnsNameResolver extends NameResolver {
   }
 
   @VisibleForTesting
-  static final class Resolve implements Runnable {
+  final class Resolve implements Runnable {
 
     private final DnsNameResolver resolver;
 
-    Resolve(DnsNameResolver resolver) {
-      this.resolver = resolver;
+    Resolve() {
+      this.resolver = DnsNameResolver.this;
     }
 
     @Override
