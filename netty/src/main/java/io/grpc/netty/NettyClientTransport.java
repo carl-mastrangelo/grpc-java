@@ -422,7 +422,6 @@ class NettyClientTransport implements ConnectionClientTransport {
    * i.e.  before it's active or the TLS Handshake is complete.
    */
   static final class WriteBufferingAndExceptionHandler extends ChannelDuplexHandler {
-
     private final Queue<ChannelWrite> bufferedWrites = new ArrayDeque<>();
     private final ChannelHandler next;
     private boolean writing;
@@ -448,12 +447,11 @@ class NettyClientTransport implements ConnectionClientTransport {
      */
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-      StatusRuntimeException unavailable =
-          unavailableException(
-              "Connection broken while performing protocol negotiation ("
-                  + ctx.pipeline().first() + ')');
-      failWrites(unavailable);
-      lifecycleManager.notifyTerminated(unavailable.getStatus());
+      Status status = Status.UNAVAILABLE
+          .withDescription("Connection broken while performing protocol negotiation ("
+              + ctx.pipeline().first() + ')');
+      failWrites(status.asRuntimeException());
+      lifecycleManager.notifyTerminated(status);
     }
 
     @Override
@@ -516,13 +514,14 @@ class NettyClientTransport implements ConnectionClientTransport {
      */
     @Override
     public void close(ChannelHandlerContext ctx, ChannelPromise future) throws Exception {
-      StatusRuntimeException unavailable =
-          unavailableException(
-              "Connection closed while performing protocol negotiation ("
-                  + ctx.pipeline().first() + ')');
-      lifecycleManager.notifyShutdown(unavailable.getStatus());
-      if (ctx.channel().isActive()) { // This may be a notification that the socket was closed
-        failWrites(unavailable);
+      Status status = Status.UNAVAILABLE.withDescription(
+          "Connection closed while performing protocol negotiation (" + ctx.pipeline().first()
+              + ')');
+      failWrites(status.asRuntimeException());
+      if (ctx.channel().isActive()) {
+        lifecycleManager.notifyShutdown(status);
+      } else {
+        lifecycleManager.notifyTerminated(status);
       }
       super.close(ctx, future);
     }
@@ -542,8 +541,20 @@ class NettyClientTransport implements ConnectionClientTransport {
       }
     }
 
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+      if (evt instanceof ProtocolNegotiationEvent) {
+        writeBuffered(ctx);
+        // Removal has to happen last as the above writes will likely trigger
+        // new writes that have to be added to the end of queue in order to not
+        // mess up the ordering.
+        ctx.pipeline().remove(this);
+      }
+      super.userEventTriggered(ctx, evt);
+    }
+
     @SuppressWarnings("FutureReturnValueIgnored")
-    final void writeBufferedAndRemove(ChannelHandlerContext ctx) {
+    private void writeBuffered(ChannelHandlerContext ctx) {
       if (!ctx.channel().isActive() || writing) {
         return;
       }
@@ -557,14 +568,6 @@ class NettyClientTransport implements ConnectionClientTransport {
       if (flushRequested) {
         ctx.flush();
       }
-      // Removal has to happen last as the above writes will likely trigger
-      // new writes that have to be added to the end of queue in order to not
-      // mess up the ordering.
-      ctx.pipeline().remove(this);
-    }
-
-    private static StatusRuntimeException unavailableException(String msg) {
-      return Status.UNAVAILABLE.withDescription(msg).asRuntimeException();
     }
 
     private static final class ChannelWrite {

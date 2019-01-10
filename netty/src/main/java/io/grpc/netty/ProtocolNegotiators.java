@@ -380,7 +380,7 @@ public final class ProtocolNegotiators {
   static final class PlaintextNegotiator implements ProtocolNegotiator {
     @Override
     public Handler newHandler(GrpcHttp2ConnectionHandler handler) {
-      return new BufferUntilChannelActiveHandler(handler);
+      return new PlaintextHandlerGood(handler);
     }
 
     @Override
@@ -699,17 +699,14 @@ public final class ProtocolNegotiators {
     }
   }
 
-  /**
-   * Buffers all writes until the {@link io.netty.channel.Channel} is active.
-   */
-  private static class BufferUntilChannelActiveHandler extends AbstractBufferingHandler
+
+  private static final class PlaintextHandlerGood extends ChannelInboundHandlerAdapter
       implements ProtocolNegotiator.Handler {
 
-    private final GrpcHttp2ConnectionHandler handler;
+    private final ChannelHandler next;
 
-    BufferUntilChannelActiveHandler(GrpcHttp2ConnectionHandler handler) {
-      super(handler);
-      this.handler = handler;
+    private PlaintextHandlerGood(ChannelHandler next) {
+      this.next = next;
     }
 
     @Override
@@ -718,21 +715,42 @@ public final class ProtocolNegotiators {
     }
 
     @Override
-    public void handlerAdded(ChannelHandlerContext ctx) {
-      writeBufferedAndRemove(ctx);
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+      ctx.pipeline().addAfter(ctx.name(), null, next);
+      super.channelActive(ctx);
+      ctx.pipeline().remove(ctx.name());
+      ctx.fireUserEventTriggered(
+          ProtocolNegotiationEvent.DEFAULT.withAttributes(Attributes.newBuilder()
+              .set(Grpc.TRANSPORT_ATTR_REMOTE_ADDR, ctx.channel().remoteAddress())
+              .set(Grpc.TRANSPORT_ATTR_LOCAL_ADDR, ctx.channel().localAddress())
+              .set(GrpcAttributes.ATTR_SECURITY_LEVEL, SecurityLevel.NONE)
+              .build()));
+    }
+  }
+
+  private static final class Http2UpgradeHandlerGood extends ChannelInboundHandlerAdapter
+      implements ProtocolNegotiator.Handler {
+
+    private final ChannelHandler next;
+    private final String authority;
+
+    private Http2UpgradeHandlerGood(ChannelHandler next, String authority) {
+      this.next = next;
+      this.authority = authority;
+    }
+
+    @Override
+    public AsciiString scheme() {
+      return Utils.HTTP;
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-      writeBufferedAndRemove(ctx);
-      handler.handleProtocolNegotiationCompleted(
-          Attributes
-              .newBuilder()
-              .set(Grpc.TRANSPORT_ATTR_REMOTE_ADDR, ctx.channel().remoteAddress())
-              .set(Grpc.TRANSPORT_ATTR_LOCAL_ADDR, ctx.channel().localAddress())
-              .set(GrpcAttributes.ATTR_SECURITY_LEVEL, SecurityLevel.NONE)
-              .build(),
-          /*securityInfo=*/ null);
+      // Trigger the HTTP/1.1 plaintext upgrade protocol by issuing an HTTP request
+      // which causes the upgrade headers to be added
+      DefaultHttpRequest upgradeTrigger =
+          new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
+      upgradeTrigger.headers().add(HttpHeaderNames.HOST, authority);
       super.channelActive(ctx);
     }
   }
