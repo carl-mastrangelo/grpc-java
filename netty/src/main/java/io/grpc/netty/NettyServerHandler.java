@@ -586,6 +586,17 @@ class NettyServerHandler extends AbstractNettyHandler {
     }
   }
 
+  @Override
+  public void close(ChannelHandlerContext ctx, ChannelPromise promise) throws Exception {
+    if (gracefulShutdown == null) {
+      gracefulShutdown = new GracefulShutdown("app_requested", null);
+      gracefulShutdown.start(ctx);
+      ctx.flush();
+    } else {
+      logger.log(Level.FINE, "Graceful shutdown in progress, ignoring");
+    }
+  }
+
   /**
    * Returns the given processed bytes back to inbound flow control.
    */
