@@ -536,6 +536,11 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
     throw new UnsupportedOperationException();
   }
 
+
+  public T defaultServiceConfig(String serviceConfig) {
+    throw new UnsupportedOperationException();
+  }
+
   /**
    * Builds a channel using the given parameters.
    *

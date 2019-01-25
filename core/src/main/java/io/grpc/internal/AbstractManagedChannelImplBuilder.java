@@ -35,6 +35,7 @@ import io.grpc.NameResolver;
 import io.grpc.NameResolverProvider;
 import io.grpc.ProxyDetector;
 import io.opencensus.trace.Tracing;
+import java.io.IOException;
 import java.net.SocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -42,6 +43,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
@@ -142,6 +144,29 @@ public abstract class AbstractManagedChannelImplBuilder
   protected TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
 
   private int maxInboundMessageSize = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE;
+
+  @Nullable
+  private Map<String, Object> defaultServiceConfig;
+
+  @Override
+  public final T defaultServiceConfig(String serviceConfig) {
+    if (serviceConfig == null) {
+      defaultServiceConfig = null;
+      return thisT();
+    }
+    Object svc;
+    try {
+      svc = JsonParser.parse(serviceConfig);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+    checkArgument(
+        svc instanceof Map,
+        "Default Service Config is not an object: ```%s```",
+        serviceConfig);
+    defaultServiceConfig = (Map<String, Object>) svc;
+    return thisT();
+  }
 
   @Nullable
   BinaryLog binlog;

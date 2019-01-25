@@ -1271,6 +1271,18 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+
+  private boolean setServiceConfig(Map<String, Object> serviceConfig) {
+    if (serviceConfig == null || serviceConfig.equals(lastServiceConfig)) {
+      return false;
+    }
+    serviceConfigInterceptor.handleUpdate(serviceConfig);
+    if (retryEnabled) {
+      throttle = getThrottle(config);
+    }
+    reut
+  }
+
   private class NameResolverListenerImpl implements NameResolver.Listener {
     final LbHelperImpl helper;
     final NameResolver resolver;
@@ -1375,9 +1387,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
   @Nullable
-  private static Throttle getThrottle(Attributes config) {
-    return ServiceConfigUtil.getThrottlePolicy(
-        config.get(GrpcAttributes.NAME_RESOLVER_SERVICE_CONFIG));
+  private static Throttle getThrottle(@Nullable Map<String, Object> config) {
+    return ServiceConfigUtil.getThrottlePolicy(config);
   }
 
   private final class SubchannelImpl extends AbstractSubchannel {
