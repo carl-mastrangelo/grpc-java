@@ -88,6 +88,30 @@ public final class TestDeprecatedServiceGrpc {
     }
   }
 
+  public enum TestDeprecatedServiceMethod {
+    METHOD_DEPRECATED_METHOD(
+        "DeprecatedMethod",
+        io.grpc.testing.compiler.nano.Test.SimpleRequest.class,
+        io.grpc.testing.compiler.nano.Test.SimpleResponse.class,
+        io.grpc.MethodDescriptor.MethodType.UNARY),
+    ;
+
+    private final java.lang.String methodName;
+    private final java.lang.Class<?> requestType;
+    private final java.lang.Class<?> responseType;
+    private final io.grpc.MethodDescriptor.MethodType methodType;
+    TestDeprecatedServiceMethod(
+        java.lang.String methodName,
+        java.lang.Class<?> requestType,
+        java.lang.Class<?> responseType,
+        io.grpc.MethodDescriptor.MethodType methodType) {
+      this.methodName = methodName;
+      this.requestType = requestType;
+      this.responseType = responseType;
+      this.methodType = methodType;
+    }
+  }
+
   /**
    * Creates a new async stub that supports all call types for the service
    */

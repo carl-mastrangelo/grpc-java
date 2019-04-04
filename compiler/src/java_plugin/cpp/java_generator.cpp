@@ -369,6 +369,74 @@ void GrpcWriteMethodDocComment(Printer* printer,
   printer->Print(" */\n");
 }
 
+static void PrintEnumFields(
+    const ServiceDescriptor* service, std::map<string, string>* vars,
+    Printer* p, ProtoFlavor flavor) {
+  if (flavor != ProtoFlavor::NANO) {
+    return;
+  }
+  (*vars)["service_name"] = service->name();
+  
+  p->Print(*vars, "public enum $service_name$Method {\n");
+  for (int i = 0; i < service->method_count(); ++i) {
+    const MethodDescriptor* method = service->method(i);
+    (*vars)["arg_in_id"] = to_string(2 * i);
+    (*vars)["arg_out_id"] = to_string(2 * i + 1);
+    (*vars)["method_name"] = method->name();
+    (*vars)["input_type"] = MessageFullJavaName(flavor == ProtoFlavor::NANO,
+                                                method->input_type());
+    (*vars)["output_type"] = MessageFullJavaName(flavor == ProtoFlavor::NANO,
+                                                 method->output_type());
+    (*vars)["method_field_name"] = MethodPropertiesFieldName(method);
+    (*vars)["method_new_field_name"] = MethodPropertiesGetterName(method);
+    (*vars)["method_method_name"] = MethodPropertiesGetterName(method);
+    bool client_streaming = method->client_streaming();
+    bool server_streaming = method->server_streaming();
+    if (client_streaming) {
+      if (server_streaming) {
+        (*vars)["method_type"] = "BIDI_STREAMING";
+      } else {
+        (*vars)["method_type"] = "CLIENT_STREAMING";
+      }
+    } else {
+      if (server_streaming) {
+        (*vars)["method_type"] = "SERVER_STREAMING";
+      } else {
+        (*vars)["method_type"] = "UNARY";
+      }
+    }
+
+	if (flavor == ProtoFlavor::LITE) {
+	(*vars)["ProtoUtils"] = "io.grpc.protobuf.lite.ProtoLiteUtils";
+	} else {
+	(*vars)["ProtoUtils"] = "io.grpc.protobuf.ProtoUtils";
+	}
+	p->Print(*vars, "  $method_field_name$(\n");
+	p->Print(*vars, "      \"$method_name$\",\n");
+	p->Print(*vars, "      $input_type$.class,\n");
+	p->Print(*vars, "      $output_type$.class,\n");
+	p->Print(*vars, "      $MethodType$.$method_type$),\n");
+  }
+  p->Print("  ;\n");
+  p->Print("\n");
+  p->Print(*vars, "  private final $String$ methodName;\n");
+  p->Print(*vars, "  private final $Class$<?> requestType;\n");
+  p->Print(*vars, "  private final $Class$<?> responseType;\n");
+  p->Print(*vars, "  private final $MethodType$ methodType;\n");
+  p->Print(*vars, "  $service_name$Method(\n");
+  p->Print(*vars, "      $String$ methodName,\n");
+  p->Print(*vars, "      $Class$<?> requestType,\n");
+  p->Print(*vars, "      $Class$<?> responseType,\n");
+  p->Print(*vars, "      $MethodType$ methodType) {\n");
+  p->Print(*vars, "    this.methodName = methodName;\n");
+  p->Print(*vars, "    this.requestType = requestType;\n");
+  p->Print(*vars, "    this.responseType = responseType;\n");
+  p->Print(*vars, "    this.methodType = methodType;\n");
+  p->Print(*vars, "  }\n");
+  p->Print("}\n");
+  p->Print("\n");
+}
+
 static void PrintMethodFields(
     const ServiceDescriptor* service, std::map<string, string>* vars,
     Printer* p, ProtoFlavor flavor) {
@@ -1183,6 +1251,7 @@ static void PrintService(const ServiceDescriptor* service,
       "\"$Package$$service_name$\";\n\n");
 
   PrintMethodFields(service, vars, p, flavor);
+  PrintEnumFields(service, vars, p, flavor);
 
   // TODO(nmittler): Replace with WriteDocComment once included by protobuf distro.
   GrpcWriteDocComment(p, " Creates a new async stub that supports all call types for the service");
@@ -1279,6 +1348,7 @@ void GenerateService(const ServiceDescriptor* service,
   // avoid collision with generated classes.
   std::map<string, string> vars;
   vars["String"] = "java.lang.String";
+  vars["Class"] = "java.lang.Class";
   vars["Deprecated"] = "java.lang.Deprecated";
   vars["Override"] = "java.lang.Override";
   vars["Channel"] = "io.grpc.Channel";

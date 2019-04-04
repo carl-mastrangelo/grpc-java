@@ -216,6 +216,56 @@ public final class TestServiceGrpc {
      return getImportMethod;
   }
 
+  // Static method descriptors that strictly reflect the proto.
+  public enum TestServiceMethod {
+    METHOD_UNARY_CALL(
+        "UnaryCall",
+        io.grpc.testing.compiler.Test.SimpleRequest.class,
+        io.grpc.testing.compiler.Test.SimpleResponse.class,
+        io.grpc.MethodDescriptor.MethodType.UNARY),
+    METHOD_STREAMING_OUTPUT_CALL(
+        "StreamingOutputCall",
+        io.grpc.testing.compiler.Test.StreamingOutputCallRequest.class,
+        io.grpc.testing.compiler.Test.StreamingOutputCallResponse.class,
+        io.grpc.MethodDescriptor.MethodType.SERVER_STREAMING),
+    METHOD_STREAMING_INPUT_CALL(
+        "StreamingInputCall",
+        io.grpc.testing.compiler.Test.StreamingInputCallRequest.class,
+        io.grpc.testing.compiler.Test.StreamingInputCallResponse.class,
+        io.grpc.MethodDescriptor.MethodType.CLIENT_STREAMING),
+    METHOD_FULL_BIDI_CALL(
+        "FullBidiCall",
+        io.grpc.testing.compiler.Test.StreamingOutputCallRequest.class,
+        io.grpc.testing.compiler.Test.StreamingOutputCallResponse.class,
+        io.grpc.MethodDescriptor.MethodType.BIDI_STREAMING),
+    METHOD_HALF_BIDI_CALL(
+        "HalfBidiCall",
+        io.grpc.testing.compiler.Test.StreamingOutputCallRequest.class,
+        io.grpc.testing.compiler.Test.StreamingOutputCallResponse.class,
+        io.grpc.MethodDescriptor.MethodType.BIDI_STREAMING),
+    METHOD_IMPORT(
+        "Import",
+        io.grpc.testing.compiler.Test.StreamingInputCallRequest.class,
+        io.grpc.testing.compiler.Test.StreamingInputCallResponse.class,
+        io.grpc.MethodDescriptor.MethodType.BIDI_STREAMING),
+    ;
+
+    private final java.lang.String methodName;
+    private final java.lang.Class<?> requestType;
+    private final java.lang.Class<?> responseType;
+    private final io.grpc.MethodDescriptor.MethodType methodType;
+    TestServiceMethod(
+        java.lang.String methodName,
+        java.lang.Class<?> requestType,
+        java.lang.Class<?> responseType,
+        io.grpc.MethodDescriptor.MethodType methodType) {
+      this.methodName = methodName;
+      this.requestType = requestType;
+      this.responseType = responseType;
+      this.methodType = methodType;
+    }
+  }
+
   /**
    * Creates a new async stub that supports all call types for the service
    */
