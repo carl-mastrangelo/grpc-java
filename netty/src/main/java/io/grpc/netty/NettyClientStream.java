@@ -43,6 +43,7 @@ import io.netty.channel.EventLoop;
 import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2Stream;
 import io.netty.util.AsciiString;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import javax.annotation.Nullable;
 
 /**
@@ -190,10 +191,16 @@ class NettyClientStream extends AbstractClientStream {
 
     @Override
     public void request(final int numMessages) {
+      assert numMessages > 0;
       if (channel.eventLoop().inEventLoop()) {
         // Processing data read in the event loop so can call into the deframer immediately
         transportState().requestMessagesFromDeframer(numMessages);
       } else {
+        if (TransportState.outstandingRequestsUpdater.get(state) == 0) {
+          if (TransportState.outstandingRequestsUpdater.compareAndSet(state, 0, numMessages)) {
+            return;
+          }
+        }
         channel.eventLoop().execute(new Runnable() {
           @Override
           public void run() {
@@ -212,12 +219,15 @@ class NettyClientStream extends AbstractClientStream {
   /** This should only called from the transport thread. */
   public abstract static class TransportState extends Http2ClientStreamTransportState
       implements StreamIdHolder {
+    private static final AtomicIntegerFieldUpdater<TransportState> outstandingRequestsUpdater =
+        AtomicIntegerFieldUpdater.newUpdater(TransportState.class, "outstandingRequests");
     private static final int NON_EXISTENT_ID = -1;
 
     private final NettyClientHandler handler;
     private final EventLoop eventLoop;
     private int id;
     private Http2Stream http2Stream;
+    private volatile int outstandingRequests;
 
     public TransportState(
         NettyClientHandler handler,
@@ -311,6 +321,7 @@ class NettyClientStream extends AbstractClientStream {
     }
 
     void transportHeadersReceived(Http2Headers headers, boolean endOfStream) {
+      int outstandingRequests = outstandingRequestsUpdater.getAndSet(this, -1);
       if (endOfStream) {
         if (!isOutboundClosed()) {
           handler.getWriteQueue().enqueue(new CancelClientStreamCommand(this, null), true);
@@ -318,6 +329,9 @@ class NettyClientStream extends AbstractClientStream {
         transportTrailersReceived(Utils.convertTrailers(headers));
       } else {
         transportHeadersReceived(Utils.convertHeaders(headers));
+      }
+      if (outstandingRequests > 0) {
+        requestMessagesFromDeframer(outstandingRequests);
       }
     }
 
