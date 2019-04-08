@@ -61,6 +61,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.NameResolver;
+import io.grpc.NameResolver.Helper.ConfigOrError;
 import io.grpc.NameResolver.ResolutionResult;
 import io.grpc.ProxyDetector;
 import io.grpc.Status;
@@ -241,10 +242,11 @@ final class ManagedChannelImpl extends ManagedChannel implements
   private Boolean haveBackends; // a flag for doing channel tracing when flipped
   // Must be mutated and read from constructor or syncContext
   // TODO(notcarl): check this value when error in service config resolution
+  // used for channel tracing when value changed
   @Nullable
-  private Map<String, ?> lastServiceConfig; // used for channel tracing when value changed
+  private ManagedChannelServiceConfig lastServiceConfig;
   @Nullable
-  private final Map<String, ?> defaultServiceConfig;
+  private final ManagedChannelServiceConfig defaultServiceConfig;
   // Must be mutated and read from constructor or syncContext
   // See service config error handling spec for reference.
   // TODO(notcarl): check this value when error in service config resolution
@@ -1331,21 +1333,20 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
           nameResolverBackoffPolicy = null;
 
+          ConfigOrError parsedConfig = resolutionResult.getServiceConfig();
           // Assuming no error in config resolution for now.
-          final Map<String, ?> serviceConfig =
-              attrs.get(GrpcAttributes.NAME_RESOLVER_SERVICE_CONFIG);
-          Map<String, ?> effectiveServiceConfig;
+          ManagedChannelServiceConfig effectiveConfig;
           if (!lookUpServiceConfig) {
-            if (serviceConfig != null) {
+            if (parsedConfig != null) {
               channelLogger.log(
                   ChannelLogLevel.INFO,
                   "Service config from name resolver discarded by channel settings");
             }
-            effectiveServiceConfig = defaultServiceConfig;
+            effectiveConfig = defaultServiceConfig;
           } else {
             // Try to use config if returned from name resolver
             // Otherwise, try to use the default config if available
-            if (serviceConfig != null) {
+            if (parsedConfig != null) {
               effectiveServiceConfig = serviceConfig;
             } else {
               effectiveServiceConfig = defaultServiceConfig;

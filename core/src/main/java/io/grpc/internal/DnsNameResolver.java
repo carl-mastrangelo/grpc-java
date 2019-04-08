@@ -145,6 +145,7 @@ final class DnsNameResolver extends NameResolver {
 
   // Following fields must be accessed from syncContext
   private final Stopwatch stopwatch;
+  private final Helper helper;
   private ResolutionResults cachedResolutionResults;
   private boolean shutdown;
   private Executor executor;
@@ -156,7 +157,7 @@ final class DnsNameResolver extends NameResolver {
 
   DnsNameResolver(@Nullable String nsAuthority, String name, Helper helper,
       Resource<Executor> executorResource, Stopwatch stopwatch, boolean isAndroid) {
-    Preconditions.checkNotNull(helper, "helper");
+    this.helper = Preconditions.checkNotNull(helper, "helper");
     // TODO: if a DNS server is provided as nsAuthority, use it.
     // https://www.captechconsulting.com/blogs/accessing-the-dusty-corners-of-dns-with-java
     this.executorResource = executorResource;
@@ -290,26 +291,23 @@ final class DnsNameResolver extends NameResolver {
         return;
       }
 
-      Attributes.Builder attrs = Attributes.newBuilder();
+      ResolutionResult.Builder resolutionResult = ResolutionResult.newBuilder().setServers(servers);
       if (!resolutionResults.txtRecords.isEmpty()) {
-        ConfigOrError serviceConfig =
+        ConfigOrError rawServiceConfig =
             parseServiceConfig(resolutionResults.txtRecords, random, getLocalHostname());
-        if (serviceConfig != null) {
-          if (serviceConfig.getError() != null) {
-            savedObserver.onError(serviceConfig.getError());
+        if (rawServiceConfig != null) {
+          if (rawServiceConfig.getError() != null) {
+            savedObserver.onError(rawServiceConfig.getError());
             return;
           } else {
-            @SuppressWarnings("unchecked")
-            Map<String, ?> config = (Map<String, ?>) serviceConfig.getConfig();
-            attrs.set(GrpcAttributes.NAME_RESOLVER_SERVICE_CONFIG, config);
+            Map<String, ?> rawConfig = (Map<String, ?>) rawServiceConfig.getConfig();
+            resolutionResult.setServiceConfig(helper.parseServiceConfig(rawConfig));
           }
         }
       } else {
         logger.log(Level.FINE, "No TXT records found for {0}", new Object[]{host});
       }
-      ResolutionResult resolutionResult =
-          ResolutionResult.newBuilder().setServers(servers).setAttributes(attrs.build()).build();
-      savedObserver.onResult(resolutionResult);
+      savedObserver.onResult(resolutionResult.build());
     }
   }
 
