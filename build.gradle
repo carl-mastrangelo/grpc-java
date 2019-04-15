@@ -326,6 +326,7 @@ subprojects {
                 project.property('jmhIncludeSingleClass')
             ]
         }
+        profilers = ["perfasm"]
     }
 
     task javadocJar(type: Jar) {

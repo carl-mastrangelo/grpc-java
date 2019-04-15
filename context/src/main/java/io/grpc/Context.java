@@ -19,6 +19,9 @@ package io.grpc;
 import io.grpc.Context.CheckReturnValue;
 import java.io.Closeable;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
@@ -114,7 +117,7 @@ public class Context {
    * <p>Never assume this is the default context for new threads, because {@link Storage} may define
    * a default context that is different from ROOT.
    */
-  public static final Context ROOT = new Context(null, EMPTY_ENTRIES);
+  public static final Context ROOT = new Context(null, new Object[0]);
 
   // Visible For testing
   static Storage storage() {
@@ -188,14 +191,14 @@ public class Context {
   private ArrayList<ExecutableListener> listeners;
   private CancellationListener parentListener = new ParentListener();
   final CancellableContext cancellableAncestor;
-  final PersistentHashArrayMappedTrie<Key<?>, Object> keyValueEntries;
+  final Object[] keyValueEntries;
   // The number parents between this context and the root context.
   final int generation;
 
   /**
    * Construct a context that cannot be cancelled and will not cascade cancellation from its parent.
    */
-  private Context(PersistentHashArrayMappedTrie<Key<?>, Object> keyValueEntries, int generation) {
+  private Context(Object[] keyValueEntries, int generation) {
     cancellableAncestor = null;
     this.keyValueEntries = keyValueEntries;
     this.generation = generation;
@@ -206,7 +209,7 @@ public class Context {
    * Construct a context that cannot be cancelled but will cascade cancellation from its parent if
    * it is cancellable.
    */
-  private Context(Context parent, PersistentHashArrayMappedTrie<Key<?>, Object> keyValueEntries) {
+  private Context(Context parent, Object[] keyValueEntries) {
     cancellableAncestor = cancellableAncestor(parent);
     this.keyValueEntries = keyValueEntries;
     this.generation = parent == null ? 0 : parent.generation + 1;
@@ -267,7 +270,7 @@ public class Context {
    * </pre>
    */
   public CancellableContext withDeadlineAfter(long duration, TimeUnit unit,
-                                              ScheduledExecutorService scheduler) {
+      ScheduledExecutorService scheduler) {
     return withDeadline(Deadline.after(duration, unit), scheduler);
   }
 
@@ -303,6 +306,8 @@ public class Context {
     return new CancellableContext(this, deadline, scheduler);
   }
 
+  private static final int KEY_VALUE_ENTRIES_MAX = 10;
+
   /**
    * Create a new context with the given key value set. The new context will cascade cancellation
    * from its parent.
@@ -318,8 +323,29 @@ public class Context {
    *
    */
   public <V> Context withValue(Key<V> k1, V v1) {
-    PersistentHashArrayMappedTrie<Key<?>, Object> newKeyValueEntries = keyValueEntries.put(k1, v1);
+    Object[] newKeyValueEntries = Arrays.copyOf(
+        keyValueEntries, Math.min(keyValueEntries.length + 2, KEY_VALUE_ENTRIES_MAX + 1));
+    int idx = keyValueEntries.length;
+    if (idx <= KEY_VALUE_ENTRIES_MAX - 2) {
+      newKeyValueEntries[idx++] = k1;
+      newKeyValueEntries[idx] = v1;
+    } else {
+      newKeyValueEntries[KEY_VALUE_ENTRIES_MAX] =
+          withValueSlow(newKeyValueEntries[KEY_VALUE_ENTRIES_MAX], k1, v1);
+    }
     return new Context(this, newKeyValueEntries);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<?, ?> withValueSlow(Object keyValueEntriesOverflow, Key<?> k, Object v) {
+    Map<? super Object, ? super Object> dst;
+    if (keyValueEntriesOverflow == null) {
+      dst = new IdentityHashMap<>(2);
+    } else {
+      dst = new IdentityHashMap<>(Map.class.cast(keyValueEntriesOverflow));
+    }
+    dst.put(k, v);
+    return dst;
   }
 
   /**
@@ -327,9 +353,7 @@ public class Context {
    * from its parent.
    */
   public <V1, V2> Context withValues(Key<V1> k1, V1 v1, Key<V2> k2, V2 v2) {
-    PersistentHashArrayMappedTrie<Key<?>, Object> newKeyValueEntries =
-        keyValueEntries.put(k1, v1).put(k2, v2);
-    return new Context(this, newKeyValueEntries);
+    return withValue(k1, v1).withValue(k2, v2);
   }
 
   /**
@@ -337,9 +361,7 @@ public class Context {
    * from its parent.
    */
   public <V1, V2, V3> Context withValues(Key<V1> k1, V1 v1, Key<V2> k2, V2 v2, Key<V3> k3, V3 v3) {
-    PersistentHashArrayMappedTrie<Key<?>, Object> newKeyValueEntries =
-        keyValueEntries.put(k1, v1).put(k2, v2).put(k3, v3);
-    return new Context(this, newKeyValueEntries);
+    return withValue(k1, v1).withValue(k2, v2).withValue(k3, v3);
   }
 
   /**
@@ -348,9 +370,7 @@ public class Context {
    */
   public <V1, V2, V3, V4> Context withValues(Key<V1> k1, V1 v1, Key<V2> k2, V2 v2,
       Key<V3> k3, V3 v3, Key<V4> k4, V4 v4) {
-    PersistentHashArrayMappedTrie<Key<?>, Object> newKeyValueEntries =
-        keyValueEntries.put(k1, v1).put(k2, v2).put(k3, v3).put(k4, v4);
-    return new Context(this, newKeyValueEntries);
+    return withValue(k1, v1).withValue(k2, v2).withValue(k3, v3).withValue(k4, v4);
   }
 
   /**
@@ -458,7 +478,7 @@ public class Context {
    * Add a listener that will be notified when the context becomes cancelled.
    */
   public void addListener(final CancellationListener cancellationListener,
-                          final Executor executor) {
+      final Executor executor) {
     checkNotNull(cancellationListener, "cancellationListener");
     checkNotNull(executor, "executor");
     if (canBeCancelled()) {
@@ -659,8 +679,21 @@ public class Context {
   /**
    * Lookup the value for a key in the context inheritance chain.
    */
+  @SuppressWarnings("unchecked")
   private Object lookup(Key<?> key) {
-    return keyValueEntries.get(key);
+    Object value = null;
+    int idx = keyValueEntries.length - 1;
+    if (keyValueEntries.length == KEY_VALUE_ENTRIES_MAX + 1) {
+      if ((value = Map.class.cast(keyValueEntries[idx--]).get(key)) != null) {
+        return value;
+      }
+    }
+    for (; idx >= 0; idx -= 2) {
+      if (keyValueEntries[idx - 1] == key) {
+        return keyValueEntries[idx];
+      }
+    }
+    return null;
   }
 
   /**

@@ -46,36 +46,6 @@ public class ReadBenchmark {
       contexts.add(
           Context.ROOT.withValues(
               keys.get(0), new Object(), keys.get(1), new Object(), keys.get(2), new Object()));
-      contexts.add(
-          Context.ROOT.withValues(
-              keys.get(0),
-              new Object(),
-              keys.get(1),
-              new Object(),
-              keys.get(2),
-              new Object(),
-              keys.get(3),
-              new Object()));
-      contexts.add(contexts.get(0).withValue(keys.get(1), new Object()));
-      contexts.add(
-          contexts.get(1).withValues(keys.get(2), new Object(), keys.get(3), new Object()));
-      contexts.add(
-          contexts
-              .get(2)
-              .withValues(
-                  keys.get(3), new Object(), keys.get(4), new Object(), keys.get(5), new Object()));
-      contexts.add(
-          contexts
-              .get(3)
-              .withValues(
-                  keys.get(4),
-                  new Object(),
-                  keys.get(5),
-                  new Object(),
-                  keys.get(6),
-                  new Object(),
-                  keys.get(7),
-                  new Object()));
     }
   }
 
