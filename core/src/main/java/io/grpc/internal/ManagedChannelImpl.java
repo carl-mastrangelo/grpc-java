@@ -240,17 +240,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
   // Must be mutated and read from syncContext
   @CheckForNull
   private Boolean haveBackends; // a flag for doing channel tracing when flipped
+
   // Must be mutated and read from constructor or syncContext
-  // TODO(notcarl): check this value when error in service config resolution
+  private final ServiceConfigState serviceConfigState;
+  // Must be mutated from syncContext
   @Nullable
-  private Map<String, ?> lastServiceConfig; // used for channel tracing when value changed
-  @Nullable
-  private final Map<String, ?> defaultServiceConfig;
-  // Must be mutated and read from constructor or syncContext
-  // See service config error handling spec for reference.
-  // TODO(notcarl): check this value when error in service config resolution
-  private boolean waitingForServiceConfig = true;
-  private final boolean lookUpServiceConfig;
+  private volatile ManagedChannelServiceConfig latestServiceConfig;
 
   // One instance per channel.
   private final ChannelBufferMeter channelBufferUsed = new ChannelBufferMeter();
@@ -482,8 +477,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
       // stream, which would have reported in-use state to the channel that would have cancelled
       // the idle timer.
       PickResult pickResult = pickerCopy.pickSubchannel(args);
-      ClientTransport transport = GrpcUtil.getTransportFromPickResult(
-          pickResult, args.getCallOptions().isWaitForReady());
+      ClientTransport transport =
+          GrpcUtil.getTransportFromPickResult(pickResult, args.getCallOptions().isWaitForReady());
       if (transport != null) {
         return transport;
       }
@@ -589,9 +584,30 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
     serviceConfigInterceptor = new ServiceConfigInterceptor(
         retryEnabled, builder.maxRetryAttempts, builder.maxHedgedAttempts);
-    this.defaultServiceConfig = builder.defaultServiceConfig;
-    this.lastServiceConfig = defaultServiceConfig;
-    this.lookUpServiceConfig = builder.lookUpServiceConfig;
+    if (builder.defaultServiceConfig != null) {
+      ConfigOrError coe = this.nameResolverHelper.parseServiceConfig(builder.defaultServiceConfig);
+      if (coe.getError() != null) {
+        throw coe.getError().asRuntimeException();
+      } else {
+        serviceConfigState = new ServiceConfigState(
+            (ManagedChannelServiceConfig) coe.getConfig(),
+            builder.lookUpServiceConfig,
+            syncContext);
+      }
+    } else {
+      serviceConfigState = new ServiceConfigState(
+          /* defaultServiceConfig= */ null,
+          builder.lookUpServiceConfig,
+          syncContext);
+    }
+    syncContext.execute(new Runnable() {
+      @Override
+      public void run() {
+        serviceConfigState.waitOnServiceConfig()
+      }
+    });
+
+
     Channel channel = new RealChannel(nameResolver.getServiceAuthority());
     channel = ClientInterceptors.intercept(channel, serviceConfigInterceptor);
     if (builder.binlog != null) {
@@ -633,8 +649,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
     this.channelz = checkNotNull(builder.channelz);
     channelz.addRootChannel(this);
 
-    if (!lookUpServiceConfig) {
-      if (defaultServiceConfig != null) {
+    if (!serviceConfigState.expectUpdates()) {
+      if (serviceConfigState.getCurrent().getConfig() != null) {
         channelLogger.log(
             ChannelLogLevel.INFO, "Service config look-up disabled, using default service config");
       }
@@ -644,7 +660,6 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   // May only be called in constructor or syncContext
   private void handleServiceConfigUpdate() {
-    waitingForServiceConfig = false;
     serviceConfigInterceptor.handleUpdate(lastServiceConfig);
     if (retryEnabled) {
       throttle = ServiceConfigUtil.getThrottlePolicy(lastServiceConfig);
@@ -1324,48 +1339,31 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
           nameResolverBackoffPolicy = null;
 
-          // Assuming no error in config resolution for now.
-          final Map<String, ?> serviceConfig =
-              attrs.get(GrpcAttributes.NAME_RESOLVER_SERVICE_CONFIG);
-          Map<String, ?> effectiveServiceConfig;
-          if (!lookUpServiceConfig) {
-            if (serviceConfig != null) {
+          @Nullable ConfigOrError candidateServiceConfig = resolutionResult.getServiceConfig();
+          if (candidateServiceConfig != null) {
+            if (serviceConfigState.expectUpdates()) {
+              Status error = candidateServiceConfig.getError();
+              if (error != null) {
+                if (serviceConfigState.update(error)) {
+                  // go to transient failure
+                } else {
+                  logger.log(
+                      Level.FINE, "Error processing service config", error.asRuntimeException());
+                }
+              } else {
+                serviceConfigState.update(
+                    (ManagedChannelServiceConfig) candidateServiceConfig.getConfig());
+                // apply serviceConfigState.getCurrentServiceConfig();
+              }
+            } else {
               channelLogger.log(
                   ChannelLogLevel.INFO,
                   "Service config from name resolver discarded by channel settings");
             }
-            effectiveServiceConfig = defaultServiceConfig;
           } else {
-            // Try to use config if returned from name resolver
-            // Otherwise, try to use the default config if available
-            if (serviceConfig != null) {
-              effectiveServiceConfig = serviceConfig;
-            } else {
-              effectiveServiceConfig = defaultServiceConfig;
-              if (defaultServiceConfig != null) {
-                channelLogger.log(
-                    ChannelLogLevel.INFO,
-                    "Received no service config, using default service config");
-              }
-            }
-
-            // FIXME(notcarl): reference equality is not right (although not harmful) right now.
-            //                 Name resolver should return the same config if txt record is the same
-            if (effectiveServiceConfig != lastServiceConfig) {
-              channelLogger.log(ChannelLogLevel.INFO,
-                  "Service config changed{0}", effectiveServiceConfig == null ? " to null" : "");
-              lastServiceConfig = effectiveServiceConfig;
-            }
-
-            try {
-              handleServiceConfigUpdate();
-            } catch (RuntimeException re) {
-              logger.log(
-                  Level.WARNING,
-                  "[" + getLogId() + "] Unexpected exception from parsing service config",
-                  re);
-            }
+            channelLogger.log(ChannelLogLevel.INFO, "Received no service config");
           }
+          //////////////////////////////
 
           // Call LB only if it's not shutdown.  If LB is shutdown, lbHelper won't match.
           if (NameResolverListener.this.helper == ManagedChannelImpl.this.lbHelper) {
@@ -1373,16 +1371,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
               handleErrorInSyncContext(Status.UNAVAILABLE.withDescription(
                   "Name resolver " + resolver + " returned an empty list"));
             } else {
-              Attributes effectiveAttrs = attrs;
-              if (effectiveServiceConfig != serviceConfig) {
-                effectiveAttrs = attrs.toBuilder()
-                    .set(GrpcAttributes.NAME_RESOLVER_SERVICE_CONFIG, effectiveServiceConfig)
-                    .build();
-              }
               helper.lb.handleResolvedAddresses(
                   ResolvedAddresses.newBuilder()
                       .setAddresses(servers)
-                      .setAttributes(effectiveAttrs)
+                      .setAttributes(attrs)
                       .build());
             }
           }

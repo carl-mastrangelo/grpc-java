@@ -288,26 +288,15 @@ final class DnsNameResolver extends NameResolver {
             "No DNS backend or balancer addresses found for " + host));
         return;
       }
-
-      Attributes.Builder attrs = Attributes.newBuilder();
+      ResolutionResult.Builder results = ResolutionResult.newBuilder();
       if (!resolutionResults.txtRecords.isEmpty()) {
-        ConfigOrError serviceConfig =
-            parseServiceConfig(resolutionResults.txtRecords, random, getLocalHostname());
-        if (serviceConfig != null) {
-          if (serviceConfig.getError() != null) {
-            savedListener.onError(serviceConfig.getError());
-            return;
-          } else {
-            @SuppressWarnings("unchecked")
-            Map<String, ?> config = (Map<String, ?>) serviceConfig.getConfig();
-            attrs.set(GrpcAttributes.NAME_RESOLVER_SERVICE_CONFIG, config);
-          }
-        }
+        results.setServiceConfig(
+            parseServiceConfig(resolutionResults.txtRecords, random, getLocalHostname()));
       } else {
         logger.log(Level.FINE, "No TXT records found for {0}", new Object[]{host});
       }
-      ResolutionResult resolutionResult =
-          ResolutionResult.newBuilder().setAddresses(servers).setAttributes(attrs.build()).build();
+
+      ResolutionResult resolutionResult = results.setAddresses(servers).build();
       savedListener.onResult(resolutionResult);
     }
   }
