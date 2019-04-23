@@ -404,6 +404,8 @@ final class CensusTracingModule {
     }
   }
 
+  private static final int CENSUS_SPAN_NAME_SLOT_ID = ThreadLocalCache.getSlotId();
+
   /**
    * Convert a full method name to a tracing span name.
    *
@@ -414,8 +416,26 @@ final class CensusTracingModule {
    */
   @VisibleForTesting
   static String generateTraceSpanName(boolean isServer, String fullMethodName) {
-    String prefix = isServer ? "Recv" : "Sent";
-    return prefix + "." + fullMethodName.replace('/', '.');
+    CachedTraceSpanName traceSpanName =
+        (CachedTraceSpanName) ThreadLocalCache.get(CENSUS_SPAN_NAME_SLOT_ID);
+    if (traceSpanName == null) {
+      ThreadLocalCache.set(
+          CENSUS_SPAN_NAME_SLOT_ID,
+          traceSpanName = new CachedTraceSpanName(
+              "Recv." + fullMethodName.replace('/', '.'),
+              "Sent." + fullMethodName.replace('/', '.')));
+    }
+
+    return isServer ? traceSpanName.serverName : traceSpanName.clientName;
   }
 
+  private static final class CachedTraceSpanName {
+    final String serverName;
+    final String clientName;
+
+    CachedTraceSpanName(String serverName, String clientName) {
+      this.serverName = serverName;
+      this.clientName = clientName;
+    }
+  }
 }
