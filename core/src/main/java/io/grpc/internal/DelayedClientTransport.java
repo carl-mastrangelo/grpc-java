@@ -21,6 +21,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.grpc.CallOptions;
 import io.grpc.Context;
+import io.grpc.InternalCallOptions;
 import io.grpc.InternalChannelz.SocketStats;
 import io.grpc.InternalLogId;
 import io.grpc.LoadBalancer.PickResult;
@@ -30,6 +31,7 @@ import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.SynchronizationContext;
+import io.grpc.internal.ManagedChannelServiceConfig.MethodInfo;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -58,6 +60,7 @@ final class DelayedClientTransport implements ManagedClientTransport {
   private final Executor defaultAppExecutor;
   private final SynchronizationContext syncContext;
 
+  @Nullable private ManagedChannelServiceConfig serviceConfig;
   private Runnable reportTransportInUse;
   private Runnable reportTransportNotInUse;
   private Runnable reportTransportTerminated;
@@ -123,6 +126,22 @@ final class DelayedClientTransport implements ManagedClientTransport {
     return null;
   }
 
+  // TODO(carl-mastrangelo): find a home for this.
+  static boolean waitForReady(
+      MethodDescriptor<?, ?> md, @Nullable ManagedChannelServiceConfig config, CallOptions opts) {
+    if (config == null || InternalCallOptions.getWaitForReady(opts) != null) {
+      return opts.isWaitForReady();
+    }
+    MethodInfo info = config.getServiceMethodMap().get(md.getFullMethodName());
+    if (info != null) {
+      info = config.getServiceMap().get(md.getServiceName());
+    }
+    if (info.waitForReady != null) {
+      return info.waitForReady;
+    }
+    return opts.isWaitForReady();
+  }
+
   /**
    * If a {@link SubchannelPicker} is being, or has been provided via {@link #reprocess}, the last
    * picker will be consulted.
@@ -150,8 +169,9 @@ final class DelayedClientTransport implements ManagedClientTransport {
       }
       while (true) {
         PickResult pickResult = picker.pickSubchannel(args);
-        ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult,
-            callOptions.isWaitForReady());
+        ClientTransport transport = GrpcUtil.getTransportFromPickResult(
+            pickResult,
+            waitForReady(method, serviceConfig, callOptions));
         if (transport != null) {
           return transport.newStream(
               args.getMethodDescriptor(), args.getHeaders(), args.getCallOptions());
@@ -291,8 +311,9 @@ final class DelayedClientTransport implements ManagedClientTransport {
     for (final PendingStream stream : toProcess) {
       PickResult pickResult = picker.pickSubchannel(stream.args);
       CallOptions callOptions = stream.args.getCallOptions();
-      final ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult,
-          callOptions.isWaitForReady());
+      final ClientTransport transport = GrpcUtil.getTransportFromPickResult(
+          pickResult,
+          waitForReady(stream.args.getMethodDescriptor(), serviceConfig, callOptions));
       if (transport != null) {
         Executor executor = defaultAppExecutor;
         // createRealStream may be expensive. It will start real streams on the transport. If

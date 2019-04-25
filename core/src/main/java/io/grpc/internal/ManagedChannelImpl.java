@@ -475,8 +475,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
       // stream, which would have reported in-use state to the channel that would have cancelled
       // the idle timer.
       PickResult pickResult = pickerCopy.pickSubchannel(args);
-      ClientTransport transport =
-          GrpcUtil.getTransportFromPickResult(pickResult, args.getCallOptions().isWaitForReady());
+      ClientTransport transport = GrpcUtil.getTransportFromPickResult(
+          pickResult,
+          DelayedClientTransport.waitForReady(
+              args.getMethodDescriptor(),
+              null /*FIXME*/,
+              args.getCallOptions()));
       if (transport != null) {
         return transport;
       }
@@ -653,10 +657,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   // May only be called in constructor or syncContext
   private void handleServiceConfigUpdate() {
+    /*FIXME
     serviceConfigInterceptor.handleUpdate(lastServiceConfig);
     if (retryEnabled) {
       throttle = ServiceConfigUtil.getThrottlePolicy(lastServiceConfig);
     }
+    */
   }
 
   @VisibleForTesting
@@ -1798,90 +1804,6 @@ final class ManagedChannelImpl extends ManagedChannel implements
         return ConfigOrError.fromError(
             Status.UNKNOWN.withDescription("failed to parse service config").withCause(e));
       }
-    }
-  }
-
-  // Must be mutated and read from constructor or syncContext
-  private static final class ServiceConfigState {
-    private final boolean lookUpServiceConfig;
-    private final SynchronizationContext syncCtx;
-
-    // mutable state
-    @Nullable private ManagedChannelServiceConfig currentServiceConfig;
-    @Nullable private Status currentError;
-
-    ServiceConfigState(
-        @Nullable ManagedChannelServiceConfig defaultServiceConfig,
-        boolean lookUpServiceConfig,
-        SynchronizationContext syncCtx) {
-      this.lookUpServiceConfig = lookUpServiceConfig;
-      this.syncCtx = checkNotNull(syncCtx, "syncCtx");
-      if (!lookUpServiceConfig) {
-        currentServiceConfig = defaultServiceConfig;
-      }
-    }
-
-    /**
-     * Returns {@code true} if it RPCs should wait on a service config resolution.  This can return
-     * {@code false} if:
-     *
-     * <ul>
-     *   <li>There is a valid service config from the name resolver
-     *   <li>There is a valid default service config and a service config error from the name
-     *       resolver
-     *   <li>No service config from the name resolver, and no intent to lookup a service config.
-     *
-     * In the final case, the default service config may be present or absent, and will be the
-     * current service config.
-     */
-    boolean waitOnServiceConfig() {
-      syncCtx.throwIfNotInThisSynchronizationContext();
-      if (currentServiceConfig != null || currentError != null) {
-        return false;
-      } else {
-        return lookUpServiceConfig;
-      }
-    }
-
-    @Nullable ManagedChannelServiceConfig getCurrentServiceConfig() {
-      checkState(!waitOnServiceConfig(), "still waiting on service config");
-      return currentServiceConfig;
-    }
-
-    @Nullable Status getCurrentError() {
-      checkState(!waitOnServiceConfig(), "still waiting on service config");
-      return currentError;
-    }
-
-    /**
-     * Returns {@code} if the update was successfully applied, else {@code false}.
-     */
-    boolean update(Status error) {
-      checkNotNull(error, "error");
-      checkArgument(!error.isOk(), "can't use OK error");
-      syncCtx.throwIfNotInThisSynchronizationContext();
-      checkState(expectUpdates(), "unexpected service config update");
-      if (currentServiceConfig == null) {
-        currentError = error;
-        return true;
-      }
-      return false;
-    }
-
-    /**
-     * Returns {@code} if the update was successfully applied, else {@code false}.
-     */
-    void update(ManagedChannelServiceConfig newServiceConfig) {
-      checkNotNull(newServiceConfig, "newServiceConfig");
-      syncCtx.throwIfNotInThisSynchronizationContext();
-      checkState(expectUpdates(), "unexpected service config update");
-      currentServiceConfig = newServiceConfig;
-      currentError = null;
-      return;
-    }
-
-    boolean expectUpdates() {
-      return lookUpServiceConfig;
     }
   }
 }
