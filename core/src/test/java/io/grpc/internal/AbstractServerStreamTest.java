@@ -41,6 +41,7 @@ import java.io.InputStream;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -357,12 +358,19 @@ public class AbstractServerStreamTest {
   private static class AbstractServerStreamBase extends AbstractServerStream {
     private final Sink sink;
     private final AbstractServerStream.TransportState state;
+    private static final AtomicInteger ids = new AtomicInteger();
+    private final int id = ids.incrementAndGet();
 
     protected AbstractServerStreamBase(WritableBufferAllocator bufferAllocator, Sink sink,
         AbstractServerStream.TransportState state) {
       super(bufferAllocator, StatsTraceContext.NOOP);
       this.sink = sink;
       this.state = state;
+    }
+
+    @Override
+    public int id() {
+      return id;
     }
 
     @Override

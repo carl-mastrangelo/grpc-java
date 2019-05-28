@@ -83,6 +83,7 @@ import io.netty.handler.codec.http2.WeightedFairQueueByteDistributor;
 import io.netty.handler.logging.LogLevel;
 import io.netty.util.AsciiString;
 import io.netty.util.ReferenceCountUtil;
+import io.perfmark.PerfMark;
 import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
@@ -573,6 +574,10 @@ class NettyServerHandler extends AbstractNettyHandler {
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
       throws Exception {
+    PerfMark.startTask("NettyServerHandler.write");
+    if (msg instanceof WriteQueue.QueuedCommand) {
+      ((WriteQueue.QueuedCommand) msg).getLink().link();
+    }
     if (msg instanceof SendGrpcFrameCommand) {
       sendGrpcFrame(ctx, (SendGrpcFrameCommand) msg, promise);
     } else if (msg instanceof SendResponseHeadersCommand) {
@@ -588,6 +593,7 @@ class NettyServerHandler extends AbstractNettyHandler {
       promise.setFailure(e);
       throw e;
     }
+    PerfMark.stopTask("NettyServerHandler.write");
   }
 
   @Override

@@ -56,6 +56,7 @@ import io.netty.util.AsciiString;
 import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
+import io.perfmark.PerfMark;
 import java.net.SocketAddress;
 import java.nio.channels.ClosedChannelException;
 import java.util.Map;
@@ -168,29 +169,34 @@ class NettyClientTransport implements ConnectionClientTransport {
     if (channel == null) {
       return new FailingClientStream(statusExplainingWhyTheChannelIsNull);
     }
-    StatsTraceContext statsTraceCtx =
-        StatsTraceContext.newClientContext(callOptions, getAttributes(), headers);
-    return new NettyClientStream(
-        new NettyClientStream.TransportState(
-            handler,
-            channel.eventLoop(),
-            maxMessageSize,
-            statsTraceCtx,
-            transportTracer) {
-          @Override
-          protected Status statusFromFailedFuture(ChannelFuture f) {
-            return NettyClientTransport.this.statusFromFailedFuture(f);
-          }
-        },
-        method,
-        headers,
-        channel,
-        authority,
-        negotiationScheme,
-        userAgent,
-        statsTraceCtx,
-        transportTracer,
-        callOptions);
+    PerfMark.startTask("NettyClientTransport.newStream");
+    try {
+      StatsTraceContext statsTraceCtx =
+          StatsTraceContext.newClientContext(callOptions, getAttributes(), headers);
+      return new NettyClientStream(
+          new NettyClientStream.TransportState(
+              handler,
+              channel.eventLoop(),
+              maxMessageSize,
+              statsTraceCtx,
+              transportTracer) {
+            @Override
+            protected Status statusFromFailedFuture(ChannelFuture f) {
+              return NettyClientTransport.this.statusFromFailedFuture(f);
+            }
+          },
+          method,
+          headers,
+          channel,
+          authority,
+          negotiationScheme,
+          userAgent,
+          statsTraceCtx,
+          transportTracer,
+          callOptions);
+    } finally {
+      PerfMark.stopTask("NettyClientTransport.newStream");
+    }
   }
 
   @SuppressWarnings("unchecked")

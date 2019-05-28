@@ -12,8 +12,6 @@ buildscript {
     }
 }
 
-import net.ltgt.gradle.errorprone.CheckSeverity
-
 subprojects {
     apply plugin: "checkstyle"
     apply plugin: "java"
@@ -54,9 +52,10 @@ subprojects {
     targetCompatibility = 1.7
 
     repositories {
+        mavenLocal()
         maven { // The google mirror is less flaky than mavenCentral()
             url "https://maven-central.storage-download.googleapis.com/repos/central/data/" }
-        mavenLocal()
+
     }
 
     [
@@ -82,7 +81,7 @@ subprojects {
             "-Xlint:-serial"
         ]
         // LinkedList doesn't hurt much in tests and has lots of usages
-        options.errorprone.check("JdkObsolete", CheckSeverity.OFF)
+        // options.errorprone.check("JdkObsolete", CheckSeverity.OFF)
     }
 
     jar.manifest {
@@ -212,6 +211,10 @@ subprojects {
             protobuf_plugin: 'com.google.protobuf:protobuf-gradle-plugin:0.8.8',
             protobuf_util: "com.google.protobuf:protobuf-java-util:${protobufVersion}",
             lang: "org.apache.commons:commons-lang3:3.5",
+            perfmark_api: "io.perfmark:perfmark-api:1.0.0-SNAPSHOT",
+            perfmark_java6: "io.perfmark:perfmark-java6:1.0.0-SNAPSHOT",
+            perfmark_java7: "io.perfmark:perfmark-java7:1.0.0-SNAPSHOT",
+            perfmark_trace_writer: "io.perfmark:perfmark-trace-writer:1.0.0-SNAPSHOT",
 
             netty: "io.netty:netty-codec-http2:[${nettyVersion}]",
             netty_epoll: "io.netty:netty-transport-native-epoll:${nettyVersion}" + epoll_suffix,

@@ -46,8 +46,9 @@ import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.MethodDescriptor.MethodType;
 import io.grpc.Status;
-import io.grpc.perfmark.PerfMark;
-import io.grpc.perfmark.PerfTag;
+import io.perfmark.Link;
+import io.perfmark.PerfMark;
+import io.perfmark.Tag;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.concurrent.CancellationException;
@@ -69,7 +70,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       = "gzip".getBytes(Charset.forName("US-ASCII"));
 
   private final MethodDescriptor<ReqT, RespT> method;
-  private final PerfTag tag;
+  private final Tag tag;
   private final Executor callExecutor;
   private final CallTracer channelCallsTracer;
   private final Context context;
@@ -96,7 +97,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       boolean retryEnabled) {
     this.method = method;
     // TODO(carl-mastrangelo): consider moving this construction to ManagedChannelImpl.
-    this.tag = PerfMark.createTag(method.getFullMethodName());
+    this.tag = PerfMark.createTag(method.getFullMethodName(), System.identityHashCode(this));
     // If we know that the executor is a direct executor, we don't need to wrap it with a
     // SerializingExecutor. This is purely for performance reasons.
     // See https://github.com/grpc/grpc-java/issues/368
@@ -183,11 +184,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
   @Override
   public void start(Listener<RespT> observer, Metadata headers) {
-    PerfMark.taskStart(tag, "ClientCall.start");
+    PerfMark.startTask("ClientCall.start", tag);
     try {
       startInternal(observer, headers);
     } finally {
-      PerfMark.taskEnd(tag, "ClientCall.start");
+      PerfMark.stopTask("ClientCall.start", tag);
     }
   }
 
@@ -378,18 +379,20 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
   @Override
   public void request(int numMessages) {
+    PerfMark.startTask("ClientCall.request", tag);
     checkState(stream != null, "Not started");
     checkArgument(numMessages >= 0, "Number requested must be non-negative");
     stream.request(numMessages);
+    PerfMark.stopTask("ClientCall.request", tag);
   }
 
   @Override
   public void cancel(@Nullable String message, @Nullable Throwable cause) {
-    PerfMark.taskStart(tag, "ClientCall.cancel");
+    PerfMark.startTask("ClientCall.cancel", tag);
     try {
       cancelInternal(message, cause);
     } finally {
-      PerfMark.taskEnd(tag, "ClientCall.cancel");
+      PerfMark.stopTask("ClientCall.cancel", tag);
     }
   }
 
@@ -424,11 +427,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
   @Override
   public void halfClose() {
-    PerfMark.taskStart(tag, "ClientCall.halfClose");
+    PerfMark.startTask("ClientCall.halfClose", tag);
     try {
       halfCloseInternal();
     } finally {
-      PerfMark.taskEnd(tag, "ClientCall.halfClose");
+      PerfMark.stopTask("ClientCall.halfClose", tag);
     }
   }
 
@@ -442,11 +445,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
   @Override
   public void sendMessage(ReqT message) {
-    PerfMark.taskStart(tag, "ClientCall.sendMessage");
+    PerfMark.startTask("ClientCall.sendMessage", tag);
     try {
       sendMessageInternal(message);
     } finally {
-      PerfMark.taskEnd(tag, "ClientCall.sendMessage");
+      PerfMark.stopTask("ClientCall.sendMessage", tag);
     }
   }
 
@@ -515,6 +518,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
     @Override
     public void headersRead(final Metadata headers) {
+      PerfMark.startTask("ClientCall.headersRead", tag);
+      final Link link = PerfMark.link();
       final class HeadersRead extends ContextRunnable {
         HeadersRead() {
           super(context);
@@ -525,7 +530,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
           if (closed) {
             return;
           }
-          PerfMark.taskStart(tag, "ClientCall.headersRead");
+          PerfMark.startTask("ClientCall$Listener.headersRead", tag);
+          link.link();
           try {
             observer.onHeaders(headers);
           } catch (Throwable t) {
@@ -534,16 +540,18 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
             stream.cancel(status);
             close(status, new Metadata());
           } finally {
-            PerfMark.taskEnd(tag, "ClientCall.headersRead");
+            PerfMark.stopTask("ClientCall$Listener.headersRead", tag);
           }
         }
       }
-
       callExecutor.execute(new HeadersRead());
+      PerfMark.stopTask("ClientCall.headersRead", tag);
     }
 
     @Override
     public void messagesAvailable(final MessageProducer producer) {
+      PerfMark.startTask("ClientCall.messagesAvailable", tag);
+      final Link link = PerfMark.link();
       final class MessagesAvailable extends ContextRunnable {
         MessagesAvailable() {
           super(context);
@@ -555,7 +563,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
             GrpcUtil.closeQuietly(producer);
             return;
           }
-          PerfMark.taskStart(tag, "ClientCall.messagesAvailable");
+          PerfMark.startTask("ClientCall$Listener.messagesAvailable", tag);
+          link.link();
           try {
             InputStream message;
             while ((message = producer.next()) != null) {
@@ -574,12 +583,13 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
             stream.cancel(status);
             close(status, new Metadata());
           } finally {
-            PerfMark.taskEnd(tag, "ClientCall.messagesAvailable");
+            PerfMark.stopTask("ClientCall$Listener.messagesAvailable", tag);
           }
         }
       }
 
       callExecutor.execute(new MessagesAvailable());
+      PerfMark.stopTask("ClientCall.messagesAvailable", tag);
     }
 
     /**
@@ -603,6 +613,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
     @Override
     public void closed(Status status, RpcProgress rpcProgress, Metadata trailers) {
+      PerfMark.startTask("ClientCall.closed", tag);
+      final Link link = PerfMark.link();
       Deadline deadline = effectiveDeadline();
       if (status.getCode() == Status.Code.CANCELLED && deadline != null) {
         // When the server's deadline expires, it can only reset the stream with CANCEL and no
@@ -627,20 +639,24 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
             // We intentionally don't keep the status or metadata from the server.
             return;
           }
-          PerfMark.taskStart(tag, "ClientCall.closed");
+          PerfMark.startTask("ClientCall$Listener.closed", tag);
+          link.link();
           try {
             close(savedStatus, savedTrailers);
           } finally {
-            PerfMark.taskEnd(tag, "ClientCall.closed");
+            PerfMark.stopTask("ClientCall$Listener.closed", tag);
           }
         }
       }
 
       callExecutor.execute(new StreamClosed());
+      PerfMark.stopTask("ClientCall.closed", tag);
     }
 
     @Override
     public void onReady() {
+      PerfMark.startTask("ClientCall.onReady", tag);
+      final Link link = PerfMark.link();
       final class StreamOnReady extends ContextRunnable {
         StreamOnReady() {
           super(context);
@@ -648,7 +664,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
         @Override
         public final void runInContext() {
-          PerfMark.taskStart(tag, "ClientCall.onReady");
+          PerfMark.startTask("ClientCall$Listener.onReady", tag);
+          link.link();
           try {
             observer.onReady();
           } catch (Throwable t) {
@@ -657,12 +674,13 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
             stream.cancel(status);
             close(status, new Metadata());
           } finally {
-            PerfMark.taskEnd(tag, "ClientCall.onReady");
+            PerfMark.stopTask("ClientCall$Listener.onReady", tag);
           }
         }
       }
 
       callExecutor.execute(new StreamOnReady());
+      PerfMark.stopTask("ClientCall.onReady", tag);
     }
   }
 }

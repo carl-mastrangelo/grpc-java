@@ -50,6 +50,9 @@ import io.grpc.ServerMethodDefinition;
 import io.grpc.ServerServiceDefinition;
 import io.grpc.ServerTransportFilter;
 import io.grpc.Status;
+import io.perfmark.Link;
+import io.perfmark.PerfMark;
+import io.perfmark.Tag;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
@@ -463,6 +466,8 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
     @Override
     public void streamCreated(
         final ServerStream stream, final String methodName, final Metadata headers) {
+      final Tag tag = PerfMark.createTag(methodName, stream.id());
+      PerfMark.startTask("ServerImpl.streamCreated", tag);
       if (headers.containsKey(MESSAGE_ENCODING_KEY)) {
         String encoding = headers.get(MESSAGE_ENCODING_KEY);
         Decompressor decompressor = decompressorRegistry.lookupDecompressor(encoding);
@@ -497,6 +502,8 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
       // are delivered, including any errors. Callbacks can still be triggered, but they will be
       // queued.
 
+      final Link link = PerfMark.link();
+
       final class StreamCreated extends ContextRunnable {
 
         StreamCreated() {
@@ -505,6 +512,8 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         @Override
         public void runInContext() {
+          PerfMark.startTask("ServerImplListener.streamCreated", tag);
+          link.link();
           ServerStreamListener listener = NOOP_LISTENER;
           try {
             ServerMethodDefinition<?, ?> method = registry.lookupMethod(methodName);
@@ -533,12 +542,15 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
             context.cancel(null);
             throw e;
           } finally {
+
             jumpListener.setListener(listener);
+            PerfMark.stopTask("ServerImplListener.streamCreated", tag);
           }
         }
       }
 
       wrappedExecutor.execute(new StreamCreated());
+      PerfMark.stopTask("ServerImpl.streamCreated", tag);
     }
 
     private Context.CancellableContext createContext(

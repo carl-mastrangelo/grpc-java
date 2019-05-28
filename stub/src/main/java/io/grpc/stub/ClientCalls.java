@@ -279,10 +279,18 @@ public final class ClientCalls {
       ReqT req,
       ClientCall.Listener<RespT> responseListener,
       boolean streamingResponse) {
-    startCall(call, responseListener, streamingResponse);
+    call.start(responseListener, new Metadata());
+    if (streamingResponse) {
+      call.request(1);
+    } else {
+      // Initially ask for two responses from flow-control so that if a misbehaving server sends
+      // more than one responses, we can catch it and fail it in the listener.
+      call.request(2);
+    }
     try {
       call.sendMessage(req);
       call.halfClose();
+
     } catch (RuntimeException e) {
       throw cancelThrow(call, e);
     } catch (Error e) {
@@ -295,14 +303,20 @@ public final class ClientCalls {
       StreamObserver<RespT> responseObserver,
       boolean streamingResponse) {
     CallToStreamObserverAdapter<ReqT> adapter = new CallToStreamObserverAdapter<>(call);
-    startCall(
-        call,
-        new StreamObserverToCallListenerAdapter<>(
-            responseObserver, adapter, streamingResponse),
-        streamingResponse);
+    ClientCall.Listener<RespT> listener =
+        new StreamObserverToCallListenerAdapter<>(responseObserver, adapter, streamingResponse);
+    call.start(listener, new Metadata());
+    if (streamingResponse) {
+      call.request(1);
+    } else {
+      // Initially ask for two responses from flow-control so that if a misbehaving server sends
+      // more than one responses, we can catch it and fail it in the listener.
+      call.request(2);
+    }
     return adapter;
   }
 
+  /*
   private static <ReqT, RespT> void startCall(
       ClientCall<ReqT, RespT> call,
       ClientCall.Listener<RespT> responseListener,
@@ -315,7 +329,7 @@ public final class ClientCalls {
       // more than one responses, we can catch it and fail it in the listener.
       call.request(2);
     }
-  }
+  }*/
 
   private static final class CallToStreamObserverAdapter<T> extends ClientCallStreamObserver<T> {
     private boolean frozen;

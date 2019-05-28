@@ -35,17 +35,22 @@ import io.grpc.netty.NettyChannelBuilder;
 import io.grpc.netty.NettyServerBuilder;
 import io.grpc.okhttp.OkHttpChannelBuilder;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.DefaultEventLoopGroup;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalServerChannel;
+import io.perfmark.PerfMark;
+import io.perfmark.tracewriter.TraceEventWriter;
 import java.net.InetSocketAddress;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
@@ -56,14 +61,16 @@ import org.openjdk.jmh.annotations.TearDown;
 
 /** Some text. */
 @State(Scope.Benchmark)
+@Fork(16)
 public class TransportBenchmark {
   public enum Transport {
     INPROCESS, NETTY, NETTY_LOCAL, NETTY_EPOLL, OKHTTP
   }
 
-  @Param({"INPROCESS", "NETTY", "NETTY_LOCAL", "OKHTTP"})
+  // @Param({"INPROCESS", "NETTY", "NETTY_LOCAL", "OKHTTP"})
+  @Param({"NETTY"})
   public Transport transport;
-  @Param({"true", "false"})
+  @Param({"false"})
   public boolean direct;
 
   private ManagedChannel channel;
@@ -74,6 +81,7 @@ public class TransportBenchmark {
   @Setup
   @SuppressWarnings("LiteralClassName") // Epoll is not available on windows
   public void setUp() throws Exception {
+    PerfMark.setEnabled(true);
     AbstractServerImplBuilder<?> serverBuilder;
     AbstractManagedChannelImplBuilder<?> channelBuilder;
     switch (transport) {
@@ -180,6 +188,8 @@ public class TransportBenchmark {
         throw new Exception("failed to shut down event loop group.");
       }
     }
+
+    TraceEventWriter.main(new String[0]);
   }
 
   private SimpleRequest simpleRequest = SimpleRequest.newBuilder()
@@ -188,9 +198,9 @@ public class TransportBenchmark {
       .build();
 
   @Benchmark
-  @BenchmarkMode(Mode.SampleTime)
+  @BenchmarkMode(Mode.AverageTime)
   @OutputTimeUnit(TimeUnit.NANOSECONDS)
-  public SimpleResponse unaryCall1024() {
+  public SimpleResponse unaryCall1024() throws Exception {
     return stub.unaryCall(simpleRequest);
   }
 }

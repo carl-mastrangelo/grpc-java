@@ -22,6 +22,8 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelPromise;
+import io.perfmark.Link;
+import io.perfmark.PerfMark;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -58,11 +60,14 @@ class WriteQueue {
    * Schedule a flush on the channel.
    */
   void scheduleFlush() {
+    PerfMark.event("WriteQueue.scheduleFlush0");
     if (scheduled.compareAndSet(false, true)) {
+      PerfMark.startTask("WriteQueue.wakeUp");
       // Add the queue to the tail of the event loop so writes will be executed immediately
       // inside the event loop. Note DO NOT do channel.write outside the event loop as
       // it will not wake up immediately without a flush.
       channel.eventLoop().execute(later);
+      PerfMark.stopTask("WriteQueue.wakeUp");
     }
   }
 
@@ -104,6 +109,7 @@ class WriteQueue {
    * called in the event loop
    */
   private void flush() {
+    PerfMark.event("WriteQueue.flushStart");
     try {
       QueuedCommand cmd;
       int i = 0;
@@ -121,6 +127,7 @@ class WriteQueue {
       }
       // Must flush at least once, even if there were no writes.
       if (i != 0 || !flushedOnce) {
+        PerfMark.event("WriteQueue.periodicFlush");
         channel.flush();
       }
     } finally {
@@ -133,6 +140,7 @@ class WriteQueue {
   }
 
   private static class RunnableCommand implements QueuedCommand {
+    private final Link link = PerfMark.link();
     private final Runnable runnable;
 
     public RunnableCommand(Runnable runnable) {
@@ -153,11 +161,17 @@ class WriteQueue {
     public final void run(Channel channel) {
       runnable.run();
     }
+
+    @Override
+    public Link getLink() {
+      return link;
+    }
   }
 
   abstract static class AbstractQueuedCommand implements QueuedCommand {
 
     private ChannelPromise promise;
+    private final Link link = PerfMark.link();
 
     @Override
     public final void promise(ChannelPromise promise) {
@@ -172,6 +186,11 @@ class WriteQueue {
     @Override
     public final void run(Channel channel) {
       channel.write(this, promise);
+    }
+
+    @Override
+    public final Link getLink() {
+      return link;
     }
   }
 
@@ -190,5 +209,7 @@ class WriteQueue {
     void promise(ChannelPromise promise);
 
     void run(Channel channel);
+
+    Link getLink();
   }
 }

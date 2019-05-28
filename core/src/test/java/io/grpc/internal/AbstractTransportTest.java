@@ -88,7 +88,7 @@ import org.mockito.InOrder;
 /** Standard unit tests for {@link ClientTransport}s and {@link ServerTransport}s. */
 @RunWith(JUnit4.class)
 public abstract class AbstractTransportTest {
-  private static final int TIMEOUT_MS = 5000;
+  private static final int TIMEOUT_MS = 5000000;
 
   private static final Attributes.Key<String> ADDITIONAL_TRANSPORT_ATTR_KEY =
       Attributes.Key.create("additional-attr");

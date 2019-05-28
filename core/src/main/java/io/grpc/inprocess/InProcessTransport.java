@@ -167,6 +167,8 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
     };
   }
 
+  int streamIds;
+
   @Override
   public synchronized ClientStream newStream(
       final MethodDescriptor<?, ?> method, final Metadata headers, final CallOptions callOptions) {
@@ -195,7 +197,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
       }
     }
 
-    return new InProcessStream(method, headers, callOptions, authority).clientStream;
+    return new InProcessStream(++streamIds, method, headers, callOptions, authority).clientStream;
   }
 
   private ClientStream failedClientStream(
@@ -332,6 +334,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
   }
 
   private class InProcessStream {
+
     private final InProcessClientStream clientStream;
     private final InProcessServerStream serverStream;
     private final CallOptions callOptions;
@@ -340,6 +343,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
     private volatile String authority;
 
     private InProcessStream(
+        int streamId,
         MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions,
         String authority) {
       this.method = checkNotNull(method, "method");
@@ -347,7 +351,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
       this.callOptions = checkNotNull(callOptions, "callOptions");
       this.authority = authority;
       this.clientStream = new InProcessClientStream(callOptions, headers);
-      this.serverStream = new InProcessServerStream(method, headers);
+      this.serverStream = new InProcessServerStream(streamId, method, headers);
     }
 
     // Can be called multiple times due to races on both client and server closing at same time.
@@ -367,6 +371,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
 
     private class InProcessServerStream implements ServerStream {
       final StatsTraceContext statsTraceCtx;
+      final int streamId;
       @GuardedBy("this")
       private ClientStreamListener clientStreamListener;
       @GuardedBy("this")
@@ -384,9 +389,15 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
       @GuardedBy("this")
       private int outboundSeqNo;
 
-      InProcessServerStream(MethodDescriptor<?, ?> method, Metadata headers) {
+      InProcessServerStream(int streamId, MethodDescriptor<?, ?> method, Metadata headers) {
         statsTraceCtx = StatsTraceContext.newServerContext(
             serverStreamTracerFactories, method.getFullMethodName(), headers);
+        this.streamId = streamId;
+      }
+
+      @Override
+      public int id() {
+        return streamId;
       }
 
       private synchronized void setListener(ClientStreamListener listener) {

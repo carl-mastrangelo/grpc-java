@@ -43,6 +43,9 @@ import io.netty.channel.EventLoop;
 import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2Stream;
 import io.netty.util.AsciiString;
+import io.perfmark.Link;
+import io.perfmark.PerfMark;
+import io.perfmark.Tag;
 import javax.annotation.Nullable;
 
 /**
@@ -116,6 +119,7 @@ class NettyClientStream extends AbstractClientStream {
   private class Sink implements AbstractClientStream.Sink {
     @Override
     public void writeHeaders(Metadata headers, byte[] requestPayload) {
+      PerfMark.event("NettyClientStream.writeHeaders");
       // Convert the headers into Netty HTTP/2 headers.
       AsciiString defaultPath = (AsciiString) methodDescriptorAccessor.geRawMethodName(method);
       if (defaultPath == null) {
@@ -133,8 +137,10 @@ class NettyClientStream extends AbstractClientStream {
       } else {
         httpMethod = Utils.HTTP_METHOD;
       }
+      PerfMark.startTask("NCS.convertHeaders");
       Http2Headers http2Headers = Utils.convertClientHeaders(headers, scheme, defaultPath,
           authority, httpMethod, userAgent);
+      PerfMark.stopTask("NCS.convertHeaders");
 
       ChannelFutureListener failureListener = new ChannelFutureListener() {
         @Override
@@ -162,6 +168,7 @@ class NettyClientStream extends AbstractClientStream {
     @Override
     public void writeFrame(
         WritableBuffer frame, boolean endOfStream, boolean flush, final int numMessages) {
+      PerfMark.startTask("NettyClientStream.writeFrame");
       Preconditions.checkArgument(numMessages >= 0);
       ByteBuf bytebuf = frame == null ? EMPTY_BUFFER : ((NettyWritableBuffer) frame).bytebuf();
       final int numBytes = bytebuf.readableBytes();
@@ -186,21 +193,32 @@ class NettyClientStream extends AbstractClientStream {
         // The frame is empty and will not impact outbound flow control. Just send it.
         writeQueue.enqueue(new SendGrpcFrameCommand(transportState(), bytebuf, endOfStream), flush);
       }
+      PerfMark.stopTask("NettyClientStream.writeFrame");
     }
 
     @Override
     public void request(final int numMessages) {
+      PerfMark.startTask("NettyClientStream.request");
       if (channel.eventLoop().inEventLoop()) {
+        Tag tag = transportState().tag();
         // Processing data read in the event loop so can call into the deframer immediately
+        PerfMark.startTask("NettyClientStream.requestMessagesFromDeframer", tag);
         transportState().requestMessagesFromDeframer(numMessages);
+        PerfMark.stopTask("NettyClientStream.requestMessagesFromDeframer", tag);
       } else {
+        final Link link = PerfMark.link();
         channel.eventLoop().execute(new Runnable() {
           @Override
           public void run() {
+            Tag tag = transportState().tag();
+            PerfMark.startTask("NettyClientStream.requestMessagesFromDeframer", tag);
+            link.link();
             transportState().requestMessagesFromDeframer(numMessages);
+            PerfMark.stopTask("NettyClientStream.requestMessagesFromDeframer", tag);
           }
         });
       }
+      PerfMark.stopTask("NettyClientStream.request");
     }
 
     @Override
@@ -217,6 +235,7 @@ class NettyClientStream extends AbstractClientStream {
     private final NettyClientHandler handler;
     private final EventLoop eventLoop;
     private int id;
+    private Tag tag = PerfMark.createTag();
     private Http2Stream http2Stream;
 
     public TransportState(
@@ -236,10 +255,16 @@ class NettyClientStream extends AbstractClientStream {
       return id;
     }
 
+    Tag tag() {
+      return tag;
+    }
+
     public void setId(int id) {
       checkArgument(id > 0, "id must be positive %s", id);
       checkState(this.id == 0, "id has been previously set: %s", this.id);
       this.id = id;
+      this.tag = PerfMark.createTag("HTTP/2 stream id", id);
+
     }
 
     /**
@@ -322,6 +347,7 @@ class NettyClientStream extends AbstractClientStream {
     }
 
     void transportDataReceived(ByteBuf frame, boolean endOfStream) {
+      PerfMark.event("NettyClientStream.transportDataReceived");
       transportDataReceived(new NettyReadableBuffer(frame.retain()), endOfStream);
     }
   }

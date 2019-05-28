@@ -74,6 +74,7 @@ import io.netty.handler.codec.http2.Http2StreamVisitor;
 import io.netty.handler.codec.http2.StreamBufferingEncoder;
 import io.netty.handler.codec.http2.WeightedFairQueueByteDistributor;
 import io.netty.handler.logging.LogLevel;
+import io.perfmark.PerfMark;
 import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
@@ -309,6 +310,10 @@ class NettyClientHandler extends AbstractNettyHandler {
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
           throws Exception {
+    PerfMark.startTask("NettyClientHandler.write");
+    if (msg instanceof WriteQueue.QueuedCommand) {
+      ((WriteQueue.QueuedCommand) msg).getLink().link();
+    }
     if (msg instanceof CreateStreamCommand) {
       createStream((CreateStreamCommand) msg, promise);
     } else if (msg instanceof SendGrpcFrameCommand) {
@@ -326,6 +331,7 @@ class NettyClientHandler extends AbstractNettyHandler {
     } else {
       throw new AssertionError("Write called for unexpected type: " + msg.getClass().getName());
     }
+    PerfMark.stopTask("NettyClientHandler.write");
   }
 
   void startWriteQueue(Channel channel) {
@@ -542,15 +548,19 @@ class NettyClientHandler extends AbstractNettyHandler {
     final NettyClientStream.TransportState stream = command.stream();
     final Http2Headers headers = command.headers();
     stream.setId(streamId);
+    PerfMark.event("NettyClientHandler.streamIdAvailable", stream.tag());
 
     // Create an intermediate promise so that we can intercept the failure reported back to the
     // application.
     ChannelPromise tempPromise = ctx().newPromise();
-    encoder().writeHeaders(ctx(), streamId, headers, 0, command.isGet(), tempPromise)
-            .addListener(new ChannelFutureListener() {
+    PerfMark.startTask("NCH.writeHeaders");
+    encoder().writeHeaders(ctx(), streamId, headers, 0, command.isGet(), tempPromise);
+    PerfMark.stopTask("NCH.writeHeaders");
+    tempPromise.addListener(new ChannelFutureListener() {
               @Override
               public void operationComplete(ChannelFuture future) throws Exception {
                 if (future.isSuccess()) {
+                  PerfMark.event("NettyClientHandler.headerWriteComplete", stream.tag());
                   // The http2Stream will be null in case a stream buffered in the encoder
                   // was canceled via RST_STREAM.
                   Http2Stream http2Stream = connection().stream(streamId);
@@ -613,7 +623,9 @@ class NettyClientHandler extends AbstractNettyHandler {
       ChannelPromise promise) {
     // Call the base class to write the HTTP/2 DATA frame.
     // Note: no need to flush since this is handled by the outbound flow controller.
+    PerfMark.startTask("NCH.sendGrpcFrame");
     encoder().writeData(ctx, cmd.streamId(), cmd.content(), 0, cmd.endStream(), promise);
+    PerfMark.stopTask("NCH.sendGrpcFrame");
   }
 
   /**

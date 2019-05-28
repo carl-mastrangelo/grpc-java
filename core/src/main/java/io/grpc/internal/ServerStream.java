@@ -91,4 +91,9 @@ public interface ServerStream extends Stream {
    * The context for recording stats and traces for this stream.
    */
   StatsTraceContext statsTraceContext();
+
+  /**
+   * The stream id.
+   */
+  int id();
 }
