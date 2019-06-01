@@ -289,7 +289,7 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
         return;
       }
 
-      PerfMark.startTask("ServerCall.messagesAvailable", call.tag);
+      PerfMark.startTask("ServerStreamListenerImpl.messagesAvailable", call.tag);
       InputStream message;
       try {
         while ((message = producer.next()) != null) {
@@ -306,7 +306,7 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
         Throwables.throwIfUnchecked(t);
         throw new RuntimeException(t);
       } finally {
-        PerfMark.stopTask("ServerCall.messagesAvailable", call.tag);
+        PerfMark.stopTask("ServerStreamListenerImpl.messagesAvailable", call.tag);
       }
     }
 
@@ -316,17 +316,17 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
         return;
       }
 
-      PerfMark.startTask("ServerCall.halfClosed", call.tag);
+      PerfMark.startTask("ServerStreamListenerImpl.halfClosed", call.tag);
       try {
         listener.onHalfClose();
       } finally {
-        PerfMark.stopTask("ServerCall.halfClosed", call.tag);
+        PerfMark.stopTask("ServerStreamListenerImpl.halfClosed", call.tag);
       }
     }
 
     @Override
     public void closed(Status status) {
-      PerfMark.startTask("ServerCall.closed", call.tag);
+      PerfMark.startTask("ServerStreamListenerImpl.closed", call.tag);
       try {
         try {
           if (status.isOk()) {
@@ -342,7 +342,7 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
 
         }
       } finally {
-        PerfMark.stopTask("ServerCall.closed", call.tag);
+        PerfMark.stopTask("ServerStreamListenerImpl.closed", call.tag);
       }
     }
 
@@ -351,11 +351,11 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
       if (call.cancelled) {
         return;
       }
-      PerfMark.startTask("ServerCall.closed", call.tag);
+      PerfMark.startTask("ServerStreamListenerImpl.onReady", call.tag);
       try {
         listener.onReady();
       } finally {
-        PerfMark.stopTask("ServerCall.closed", call.tag);
+        PerfMark.stopTask("ServerStreamListenerImpl.onReady", call.tag);
       }
     }
   }

@@ -605,7 +605,12 @@ class NettyServerHandler extends AbstractNettyHandler {
     }
   }
 
-  /**
+    @Override
+    public void flush(ChannelHandlerContext ctx) {
+        super.flush(ctx);
+    }
+
+    /**
    * Returns the given processed bytes back to inbound flow control.
    */
   void returnProcessedBytes(Http2Stream http2Stream, int bytes) {

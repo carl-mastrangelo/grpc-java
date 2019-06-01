@@ -43,6 +43,7 @@ import io.grpc.InternalInstrumented;
 import io.grpc.InternalLogId;
 import io.grpc.InternalServerInterceptors;
 import io.grpc.Metadata;
+import io.grpc.MethodDescriptor;
 import io.grpc.ServerCall;
 import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
@@ -480,6 +481,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
         }
         stream.setDecompressor(decompressor);
       }
+      PerfMark.event("ServerImpl.preStats", tag);
 
       final StatsTraceContext statsTraceCtx = Preconditions.checkNotNull(
           stream.statsTraceContext(), "statsTraceCtx not present from stream");
@@ -493,11 +495,15 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
       } else {
         wrappedExecutor = new SerializingExecutor(executor);
       }
-
+      PerfMark.event("ServerImpl.preJumpToApplicationThreadServerStreamListener", tag);
       final JumpToApplicationThreadServerStreamListener jumpListener
           = new JumpToApplicationThreadServerStreamListener(
               wrappedExecutor, executor, stream, context);
       stream.setListener(jumpListener);
+      final ServerMethodDefinition<?, ?> staticMethod = registry.lookupMethod(methodName);
+      if (staticMethod.getMethodDescriptor().getType() == MethodDescriptor.MethodType.UNARY) {
+        stream.request(1);
+      }
       // Run in wrappedExecutor so jumpListener.setListener() is called before any callbacks
       // are delivered, including any errors. Callbacks can still be triggered, but they will be
       // queued.
@@ -512,15 +518,15 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         @Override
         public void runInContext() {
-          PerfMark.startTask("ServerImplListener.streamCreated", tag);
+          PerfMark.startTask("ServerTransportListenerImpl.streamCreated$StreamCreated", tag);
           link.link();
           ServerStreamListener listener = NOOP_LISTENER;
           try {
-            ServerMethodDefinition<?, ?> method = registry.lookupMethod(methodName);
-            if (method == null) {
-              method = fallbackRegistry.lookupMethod(methodName, stream.getAuthority());
+            ServerMethodDefinition<?, ?> localMethod = staticMethod;
+            if (localMethod == null) {
+              localMethod = fallbackRegistry.lookupMethod(methodName, stream.getAuthority());
             }
-            if (method == null) {
+            if (localMethod == null) {
               Status status = Status.UNIMPLEMENTED.withDescription(
                   "Method not found: " + methodName);
               // TODO(zhangkun83): this error may be recorded by the tracer, and if it's kept in
@@ -532,7 +538,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
               context.cancel(null);
               return;
             }
-            listener = startCall(stream, methodName, method, headers, context, statsTraceCtx);
+            listener = startCall(stream, methodName, localMethod, headers, context, statsTraceCtx);
           } catch (RuntimeException e) {
             stream.close(Status.fromThrowable(e), new Metadata());
             context.cancel(null);
@@ -544,7 +550,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
           } finally {
 
             jumpListener.setListener(listener);
-            PerfMark.stopTask("ServerImplListener.streamCreated", tag);
+            PerfMark.stopTask("ServerTransportListenerImpl.streamCreated$StreamCreated", tag);
           }
         }
       }
@@ -737,8 +743,10 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
     @Override
     public void messagesAvailable(final MessageProducer producer) {
-
+      PerfMark.startTask("JumpToApplicationThreadServerStreamListener.messagesAvailable");
+      final Link link = PerfMark.link();
       final class MessagesAvailable extends ContextRunnable {
+
 
         MessagesAvailable() {
           super(context);
@@ -746,6 +754,8 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         @Override
         public void runInContext() {
+          PerfMark.startTask("JumpToApplicationThreadServerStreamListener.messagesAvailable$MessagesAvailable");
+          link.link();
           try {
             getListener().messagesAvailable(producer);
           } catch (RuntimeException e) {
@@ -754,15 +764,20 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
           } catch (Error e) {
             internalClose();
             throw e;
+          } finally {
+            PerfMark.stopTask("JumpToApplicationThreadServerStreamListener.messagesAvailable$MessagesAvailable");
           }
         }
       }
 
       callExecutor.execute(new MessagesAvailable());
+      PerfMark.stopTask("JumpToApplicationThreadServerStreamListener.messagesAvailable");
     }
 
     @Override
     public void halfClosed() {
+      PerfMark.startTask("JumpToApplicationThreadServerStreamListener.halfClosed");
+      final Link link = PerfMark.link();
       final class HalfClosed extends ContextRunnable {
         HalfClosed() {
           super(context);
@@ -770,6 +785,8 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         @Override
         public void runInContext() {
+          PerfMark.startTask("JumpToApplicationThreadServerStreamListener.halfClosed$HalfClosed");
+          link.link();
           try {
             getListener().halfClosed();
           } catch (RuntimeException e) {
@@ -778,15 +795,20 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
           } catch (Error e) {
             internalClose();
             throw e;
+          } finally {
+            PerfMark.stopTask("JumpToApplicationThreadServerStreamListener.halfClosed$HalfClosed");
           }
         }
       }
 
       callExecutor.execute(new HalfClosed());
+      PerfMark.stopTask("JumpToApplicationThreadServerStreamListener.halfClosed");
     }
 
     @Override
     public void closed(final Status status) {
+      PerfMark.startTask("JumpToApplicationThreadServerStreamListener.closed");
+      final Link link = PerfMark.link();
       // For cancellations, promptly inform any users of the context that their work should be
       // aborted. Otherwise, we can wait until pending work is done.
       if (!status.isOk()) {
@@ -802,15 +824,22 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         @Override
         public void runInContext() {
+          PerfMark.startTask("JumpToApplicationThreadServerStreamListener.closed$Closed");
+          link.link();
           getListener().closed(status);
+          PerfMark.stopTask("JumpToApplicationThreadServerStreamListener.closed$Closed");
         }
       }
 
       callExecutor.execute(new Closed());
+      PerfMark.stopTask("JumpToApplicationThreadServerStreamListener.closed");
     }
 
     @Override
     public void onReady() {
+      PerfMark.startTask("JumpToApplicationThreadServerStreamListener.onReady");
+      final Link link = PerfMark.link();
+
       final class OnReady extends ContextRunnable {
         OnReady() {
           super(context);
@@ -818,6 +847,8 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         @Override
         public void runInContext() {
+          PerfMark.startTask("JumpToApplicationThreadServerStreamListener.onReady$OnReady");
+          link.link();
           try {
             getListener().onReady();
           } catch (RuntimeException e) {
@@ -826,11 +857,14 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
           } catch (Error e) {
             internalClose();
             throw e;
+          } finally {
+            PerfMark.stopTask("JumpToApplicationThreadServerStreamListener.onReady$OnReady");
           }
         }
       }
 
       callExecutor.execute(new OnReady());
+      PerfMark.stopTask("JumpToApplicationThreadServerStreamListener.onReady");
     }
   }
 

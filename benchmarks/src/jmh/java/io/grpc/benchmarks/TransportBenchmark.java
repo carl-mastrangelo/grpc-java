@@ -35,7 +35,6 @@ import io.grpc.netty.NettyChannelBuilder;
 import io.grpc.netty.NettyServerBuilder;
 import io.grpc.okhttp.OkHttpChannelBuilder;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
 import io.netty.channel.DefaultEventLoopGroup;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
@@ -45,12 +44,12 @@ import io.netty.channel.local.LocalServerChannel;
 import io.perfmark.PerfMark;
 import io.perfmark.tracewriter.TraceEventWriter;
 import java.net.InetSocketAddress;
-import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.GroupThreads;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
@@ -200,6 +199,7 @@ public class TransportBenchmark {
   @Benchmark
   @BenchmarkMode(Mode.AverageTime)
   @OutputTimeUnit(TimeUnit.NANOSECONDS)
+  @GroupThreads(8)
   public SimpleResponse unaryCall1024() throws Exception {
     return stub.unaryCall(simpleRequest);
   }

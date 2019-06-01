@@ -544,6 +544,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
           }
         }
       }
+      
       callExecutor.execute(new HeadersRead());
       PerfMark.stopTask("ClientCall.headersRead", tag);
     }
