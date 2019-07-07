@@ -14,7 +14,7 @@ startScripts.enabled = false
 run.enabled = false
 
 jmh {
-    jvmArgs = "-server -Xms2g -Xmx2g"
+    jvmArgs = "-server -Xms2g -Xmx2g -XX:+PreserveFramePointer"
     // Workaround
     // https://github.com/melix/jmh-gradle-plugin/issues/97#issuecomment-316664026
     includeTests = true
@@ -32,7 +32,10 @@ dependencies {
             libraries.hdrhistogram,
             libraries.netty_tcnative,
             libraries.netty_epoll,
-            libraries.math
+            libraries.math,
+            'io.perfmark:perfmark-java7:0.16.0',
+            'io.perfmark:perfmark-java6:0.16.0',
+            'io.perfmark:perfmark-tracewriter:0.16.0'
     compileOnly libraries.javax_annotation
 }
 
@@ -49,7 +52,8 @@ def vmArgs = [
     "-server",
     "-Xms2g",
     "-Xmx2g",
-    "-XX:+PrintGCDetails"
+    "-XX:+PrintGCDetails",
+        "-XX:+PreserveFramePointer"
 ]
 
 task qps_client(type: CreateStartScripts) {

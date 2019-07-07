@@ -41,6 +41,11 @@ import io.netty.channel.ServerChannel;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalServerChannel;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
+import io.perfmark.PerfMark;
+import io.perfmark.tracewriter.TraceEventWriter;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -58,10 +63,10 @@ import org.openjdk.jmh.annotations.TearDown;
 @State(Scope.Benchmark)
 public class TransportBenchmark {
   public enum Transport {
-    INPROCESS, NETTY, NETTY_LOCAL, NETTY_EPOLL, OKHTTP
+    INPROCESS, NETTY_NIO, NETTY_LOCAL, NETTY_EPOLL, OKHTTP
   }
 
-  @Param({"INPROCESS", "NETTY", "NETTY_LOCAL", "OKHTTP"})
+  @Param({"NETTY_NIO"})
   public Transport transport;
   @Param({"true", "false"})
   public boolean direct;
@@ -74,6 +79,7 @@ public class TransportBenchmark {
   @Setup
   @SuppressWarnings("LiteralClassName") // Epoll is not available on windows
   public void setUp() throws Exception {
+    PerfMark.setEnabled(true);
     AbstractServerImplBuilder<?> serverBuilder;
     AbstractManagedChannelImplBuilder<?> channelBuilder;
     switch (transport) {
@@ -84,12 +90,19 @@ public class TransportBenchmark {
         channelBuilder = InProcessChannelBuilder.forName(name);
         break;
       }
-      case NETTY:
+      case NETTY_NIO:
       {
         InetSocketAddress address = new InetSocketAddress("localhost", pickUnusedPort());
-        serverBuilder = NettyServerBuilder.forAddress(address);
+        EventLoopGroup group = new NioEventLoopGroup();
+        serverBuilder = NettyServerBuilder.forAddress(address)
+            .bossEventLoopGroup(group)
+            .workerEventLoopGroup(group)
+            .channelType(NioServerSocketChannel.class);
         channelBuilder = NettyChannelBuilder.forAddress(address)
+            .eventLoopGroup(group)
+            .channelType(NioSocketChannel.class)
             .negotiationType(NegotiationType.PLAINTEXT);
+        groupToShutdown = group;
         break;
       }
       case NETTY_LOCAL:
@@ -163,6 +176,7 @@ public class TransportBenchmark {
 
   @TearDown
   public void tearDown() throws Exception {
+    TraceEventWriter.writeTraceEvents();
     channel.shutdown();
     server.shutdown();
     channel.awaitTermination(1, TimeUnit.SECONDS);

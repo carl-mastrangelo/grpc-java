@@ -54,9 +54,10 @@ subprojects {
     targetCompatibility = 1.7
 
     repositories {
+        mavenLocal()
         maven { // The google mirror is less flaky than mavenCentral()
             url "https://maven-central.storage-download.googleapis.com/repos/central/data/" }
-        mavenLocal()
+
     }
 
     [
@@ -106,7 +107,7 @@ subprojects {
         protocPluginBaseName = 'protoc-gen-grpc-java'
         javaPluginPath = "$rootDir/compiler/build/exe/java_plugin/$protocPluginBaseName$exeSuffix"
 
-        nettyVersion = '4.1.37.Final'
+        nettyVersion = '4.1.38.Final-SNAPSHOT'
         googleauthVersion = '0.13.0'
         guavaVersion = '26.0-android'
         protobufVersion = '3.7.1'
@@ -307,7 +308,7 @@ subprojects {
     //   ./gradlew -PjmhIncludeSingleClass=StatsTraceContextBenchmark clean :grpc-core:jmh
     jmh {
         warmupIterations = 10
-        iterations = 10
+        iterations = 100
         fork = 1
         // None of our benchmarks need the tests, and we have pseudo-circular
         // dependencies that break when including them. (context's testCompile
