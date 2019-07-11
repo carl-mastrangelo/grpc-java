@@ -308,7 +308,7 @@ subprojects {
     //   ./gradlew -PjmhIncludeSingleClass=StatsTraceContextBenchmark clean :grpc-core:jmh
     jmh {
         warmupIterations = 10
-        iterations = 100
+        iterations = 10
         fork = 1
         // None of our benchmarks need the tests, and we have pseudo-circular
         // dependencies that break when including them. (context's testCompile

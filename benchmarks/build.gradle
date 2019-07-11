@@ -33,9 +33,9 @@ dependencies {
             libraries.netty_tcnative,
             libraries.netty_epoll,
             libraries.math,
-            'io.perfmark:perfmark-java7:0.16.0',
-            'io.perfmark:perfmark-java6:0.16.0',
-            'io.perfmark:perfmark-tracewriter:0.16.0'
+            'io.perfmark:perfmark-java7:0.17.0',
+            'io.perfmark:perfmark-java9:0.17.0',
+            'io.perfmark:perfmark-traceviewer:0.17.0'
     compileOnly libraries.javax_annotation
 }
 

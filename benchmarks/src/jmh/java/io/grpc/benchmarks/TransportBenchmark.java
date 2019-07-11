@@ -66,7 +66,7 @@ public class TransportBenchmark {
     INPROCESS, NETTY_NIO, NETTY_LOCAL, NETTY_EPOLL, OKHTTP
   }
 
-  @Param({"NETTY_NIO"})
+  @Param({"NETTY_NIO", "NETTY_EPOLL", "OKHTTP"})
   public Transport transport;
   @Param({"true", "false"})
   public boolean direct;
@@ -80,6 +80,7 @@ public class TransportBenchmark {
   @SuppressWarnings("LiteralClassName") // Epoll is not available on windows
   public void setUp() throws Exception {
     PerfMark.setEnabled(true);
+    PerfMark.event("start benchmark");
     AbstractServerImplBuilder<?> serverBuilder;
     AbstractManagedChannelImplBuilder<?> channelBuilder;
     switch (transport) {
@@ -176,7 +177,7 @@ public class TransportBenchmark {
 
   @TearDown
   public void tearDown() throws Exception {
-    TraceEventWriter.writeTraceEvents();
+    io.perfmark.traceviewer.TraceEventViewer.writeTraceHtml();
     channel.shutdown();
     server.shutdown();
     channel.awaitTermination(1, TimeUnit.SECONDS);
